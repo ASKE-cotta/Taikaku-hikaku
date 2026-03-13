@@ -1,0 +1,707 @@
+import { useState, useEffect, useCallback } from "react";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const CM = 1.8;
+const PI = Math.PI;
+
+const PRESET_COLORS = ["#3b82f6","#ef4444","#22c55e","#f97316","#a855f7","#ec4899","#14b8a6","#eab308"];
+
+// 直径→周径
+const diam2girth = d => d * PI;
+// 各キャラの股下の地上高さ(cm)
+const groinHeightCm = parts => parts.height * 0.038 + parts.legLength;
+
+const PARTS_META = {
+  height:           { label: "身長",               unit: "cm", min: 50,  max: 400, step: 1   },
+  legLength:        { label: "脚の長さ（股下）",    unit: "cm", min: 20,  max: 220, step: 1   },
+  torsoWidth:       { label: "肩幅",               unit: "cm", min: 10,  max: 140, step: 0.5 },
+  handSize:         { label: "手の大きさ",            unit: "cm", min: 4,   max: 60,  step: 0.5 },
+  penisFlaccid:     { label: "男性器・平常時（長さ）", unit: "cm", min: 2,   max: 60,  step: 0.5 },
+  penisFlaccidDiam: { label: "男性器・平常時（直径）", unit: "cm", min: 0.5, max: 8,   step: 0.1 },
+  penisErect:       { label: "男性器・勃起時（長さ）", unit: "cm", min: 2,   max: 80,  step: 0.5 },
+  penisErectDiam:   { label: "男性器・勃起時（直径）", unit: "cm", min: 0.5, max: 10,  step: 0.1 },
+};
+
+const AUTO_CALC_SOURCES = [
+  { key: "height",           label: "身長",                        fmM: "入力値そのまま",                           fmF: "入力値そのまま",   source: "—",                                                                             note: "" },
+  { key: "legLength",        label: "脚の長さ（股下）",              fmM: "身長 × 0.476",                            fmF: "身長 × 0.462",    source: "日本人成人の股下/身長比（服飾・体型研究データ）",                                 note: "男性は女性より脚の割合がやや長い" },
+  { key: "torsoWidth",       label: "肩幅",                        fmM: "身長 × 0.258",                            fmF: "身長 × 0.222",    source: "JIS規格 人体計測データ／AIST 人体寸法データベース",                               note: "男性は肩幅が広い" },
+  { key: "handSize",         label: "手の大きさ",                  fmM: "身長 × 0.108",                            fmF: "身長 × 0.108",    source: "手長/身長比 約10.8%（ANSUR II・各国人体計測研究）",                               note: "男女差はほぼなく身長比で決まる" },
+  { key: "penisFlaccid",     label: "男性器・平常時（長さ）",        fmM: "身長 × 0.054（170cm → ≈9.2cm）",          fmF: "—",             source: "BJU International 2015年 世界15,521名メタ分析 平均9.16cmを身長比換算",             note: "個人差が大きく統計的平均値" },
+  { key: "penisFlaccidDiam", label: "男性器・平常時（直径）",        fmM: "身長 × 0.0174（170cm → ≈2.96cm）",        fmF: "—",             source: "BJU International 2015年 世界15,521名メタ分析 平均周径9.31cm → 直径2.96cm（÷π）",  note: "直径 = 周径 ÷ π ≈ 周径 × 0.318" },
+  { key: "penisErect",       label: "男性器・勃起時（長さ）",        fmM: "身長 × 0.077（170cm → ≈13.1cm）",         fmF: "—",             source: "BJU International 2015年 世界15,521名メタ分析 平均13.12cmを身長比換算",            note: "個人差が大きく統計的平均値" },
+  { key: "penisErectDiam",   label: "男性器・勃起時（直径）",        fmM: "身長 × 0.0218（170cm → ≈3.71cm）",        fmF: "—",             source: "BJU International 2015年 世界15,521名メタ分析 平均周径11.66cm → 直径3.71cm（÷π）", note: "直径 = 周径 ÷ π ≈ 周径 × 0.318" },
+];
+
+function autoCalc(h, gender) {
+  const m = gender === "male";
+  const r1 = v => Math.round(v * 2) / 2;
+  const r2 = v => Math.round(v * 10) / 10;
+  return {
+    height:           h,
+    legLength:        Math.round(h * (m ? 0.476 : 0.462)),
+    torsoWidth:       r1(h * (m ? 0.258 : 0.222)),
+    handSize:         r1(h * 0.108),
+    ...(m ? {
+      penisFlaccid:     r1(h * 0.054),
+      penisFlaccidDiam: r2(h * 0.0174),
+      penisErect:       r1(h * 0.077),
+      penisErectDiam:   r2(h * 0.0218),
+    } : {}),
+  };
+}
+
+function newChar(i) {
+  const Hs = [170, 155], Gs = ["male", "female"];
+  const g = Gs[i] || "male";
+  return { id: Date.now() + i, name: `キャラ${i + 1}`, gender: g, color: PRESET_COLORS[i] || PRESET_COLORS[0], parts: autoCalc(Hs[i] || 170, g) };
+}
+
+// ─── ゾーン定義（股下から上方向・胴体内の位置） ────────────────────────────────
+// ratioFrom/To は胴体の高さに対する割合
+const BODY_ZONES = [
+  { ratioFrom: 0,    ratioTo: 0.35, color: "#3b82f6", label: "下腹部" },
+  { ratioFrom: 0.35, ratioTo: 0.70, color: "#f97316", label: "腹部"   },
+  { ratioFrom: 0.70, ratioTo: 1.00, color: "#ef4444", label: "胸部"   },
+  { ratioFrom: 1.00, ratioTo: 9999, color: "#7c3aed", label: "胸上"   },
+];
+
+// ─── SmartInput ───────────────────────────────────────────────────────────────
+function SmartInput({ value, min, max, step, onCommit, color, width = 68 }) {
+  const [local, setLocal] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setLocal(String(value)); }, [value, focused]);
+  const commit = raw => {
+    const n = parseFloat(raw);
+    if (!isNaN(n)) onCommit(Math.max(min, Math.min(max, n)));
+    else setLocal(String(value));
+  };
+  return (
+    <input type="number" value={local} min={min} max={max} step={step}
+      onFocus={() => setFocused(true)}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={() => { setFocused(false); commit(local); }}
+      onKeyDown={e => { if (e.key === "Enter") { commit(local); e.currentTarget.blur(); } }}
+      style={{ width, padding: "4px 6px", border: `1.5px solid ${focused ? color : color + "55"}`, borderRadius: 6, fontSize: 13, fontWeight: 600, color: "#1a1a2e", background: "#fff", textAlign: "right", outline: "none", fontFamily: "inherit", transition: "border-color 0.15s" }}
+    />
+  );
+}
+
+// ─── BodySVG ──────────────────────────────────────────────────────────────────
+function BodySVG({ parts, gender, color, cx, groundY }) {
+  const m = gender === "male", h = parts.height, p = v => v * CM;
+  const headH = h / 7.5, neckH = h * 0.034, footH = h * 0.038, legH = parts.legLength;
+  const torsoH = Math.max(h - legH - headH - neckH - footH, h * 0.1);
+  const yFtTop = groundY - p(footH), yLgTop = yFtTop - p(legH);
+  const yTrTop = yLgTop - p(torsoH), yNkTop = yTrTop - p(neckH), yHdCy = yNkTop - p(headH / 2);
+  const sw = p(parts.torsoWidth), ww = sw * (m ? 0.73 : 0.67), hiw = sw * (m ? 0.84 : 1.10);
+  const nw = p(h * 0.045), headW = p(headH * 0.76), headHpx = p(headH);
+  const lw = p(h * 0.052), lg = p(h * 0.022), fw = p(h * 0.115);
+  const aw = p(h * 0.038), hndH = p(parts.handSize), hndW = p(parts.handSize * 0.5);
+  const armH = p(h * 0.31 - parts.handSize);
+  const tH = p(torsoH), tMid = yTrTop + tH * 0.5, armY = yTrTop + tH * 0.05;
+  const torsoPath = [
+    `M${cx-sw/2} ${yTrTop} L${cx+sw/2} ${yTrTop}`,
+    `C${cx+sw*0.46} ${tMid-tH*0.12} ${cx+ww/2} ${tMid-tH*0.04} ${cx+ww/2} ${tMid}`,
+    `C${cx+ww/2} ${tMid+tH*0.04} ${cx+hiw*0.44} ${tMid+tH*0.16} ${cx+hiw/2} ${yLgTop}`,
+    `L${cx-hiw/2} ${yLgTop}`,
+    `C${cx-hiw*0.44} ${tMid+tH*0.16} ${cx-ww/2} ${tMid+tH*0.04} ${cx-ww/2} ${tMid}`,
+    `C${cx-ww/2} ${tMid-tH*0.04} ${cx-sw*0.46} ${tMid-tH*0.12} ${cx-sw/2} ${yTrTop} Z`,
+  ].join(" ");
+  const breastPath = !m ? [
+    `M${cx-sw*0.30} ${yTrTop+tH*0.32}`,
+    `C${cx-sw*0.38} ${yTrTop+tH*0.52} ${cx-sw*0.07} ${yTrTop+tH*0.57} ${cx} ${yTrTop+tH*0.50}`,
+    `C${cx+sw*0.07} ${yTrTop+tH*0.57} ${cx+sw*0.38} ${yTrTop+tH*0.52} ${cx+sw*0.30} ${yTrTop+tH*0.32}`,
+    `L${cx+sw*0.26} ${yTrTop+tH*0.27} L${cx-sw*0.26} ${yTrTop+tH*0.27} Z`,
+  ].join(" ") : null;
+  const penisH = m && parts.penisFlaccid ? p(parts.penisFlaccid) : 0;
+  const penisW = p(h * 0.036);
+  return (
+    <g>
+      <ellipse cx={cx} cy={yHdCy} rx={headW/2} ry={headHpx/2} fill={color} />
+      {!m && <ellipse cx={cx} cy={yHdCy - headHpx*0.37} rx={headW*0.62} ry={headHpx*0.18} fill={color} />}
+      <rect x={cx-nw/2} y={yNkTop} width={nw} height={p(neckH)} fill={color} />
+      <path d={torsoPath} fill={color} />
+      {breastPath && <path d={breastPath} fill={color} opacity={0.92} />}
+      <rect x={cx-sw/2-aw} y={armY} width={aw} height={armH} rx={aw*0.45} fill={color} />
+      <ellipse cx={cx-sw/2-aw/2} cy={armY+armH+hndH/2} rx={hndW/2} ry={hndH/2} fill={color} />
+      <rect x={cx+sw/2} y={armY} width={aw} height={armH} rx={aw*0.45} fill={color} />
+      <ellipse cx={cx+sw/2+aw/2} cy={armY+armH+hndH/2} rx={hndW/2} ry={hndH/2} fill={color} />
+      <rect x={cx-lg/2-lw} y={yLgTop} width={lw} height={p(legH)} rx={lw*0.4} fill={color} />
+      <ellipse cx={cx-lg/2-lw/2} cy={yFtTop+p(footH)/2} rx={fw/2} ry={p(footH)/2} fill={color} />
+      <rect x={cx+lg/2} y={yLgTop} width={lw} height={p(legH)} rx={lw*0.4} fill={color} />
+      <ellipse cx={cx+lg/2+lw/2} cy={yFtTop+p(footH)/2} rx={fw/2} ry={p(footH)/2} fill={color} />
+      {penisH > 0 && <rect x={cx-penisW/2} y={yLgTop} width={penisW} height={penisH} rx={penisW/2} fill={color} opacity={0.75} />}
+    </g>
+  );
+}
+
+// ─── InsertionOverlay ─────────────────────────────────────────────────────────
+// バーは targetChar の股下から上向きに erectLen cm。
+// ゾーン：股下から上向きに erectLen cm の到達位置を、targetChar の胴体高さで分類。
+function InsertionOverlay({ targetChar, sourceChar, cx, groundY }) {
+  if (!sourceChar || sourceChar.gender !== "male") return null;
+  const erectLen = sourceChar.parts.penisErect;
+  if (!erectLen) return null;
+
+  const h = targetChar.parts.height;
+  const legH = targetChar.parts.legLength;
+  const footH = h * 0.038;
+  const torsoH = Math.max(h - legH - h/7.5 - h*0.034 - footH, h * 0.1);
+  const p = v => v * CM;
+
+  const yGroin = groundY - p(footH) - p(legH); // 股下Y座標
+  const barH = p(erectLen);                     // バー全高(px)
+  const yTip = yGroin - barH;                   // 先端Y座標
+
+  // 挿入元シルエット右端の外側にバーをオフセット配置
+  const bx = cx + p(targetChar.parts.torsoWidth) / 2 + p(h * 0.05) + 10;
+  const bw = Math.max(p(h * 0.040), 8);
+  const col = sourceChar.color;
+
+  // 到達ゾーン: erectLenをtorsoHに対するゾーン境界と比較（股下からの距離をそのまま使う）
+  const reachZone = BODY_ZONES.find(z => erectLen < z.ratioTo * torsoH) || BODY_ZONES[BODY_ZONES.length - 1];
+
+  // 各ゾーンの着色セグメント計算
+  // 股下から上方向に：ゾーンのfromTo(cm)をバーのY範囲に変換
+  const segments = BODY_ZONES.map(z => {
+    const segFromCm = z.ratioFrom * torsoH; // 股下からの距離(cm)
+    const segToCm   = z.ratioTo   * torsoH; // cm (最後のゾーンは巨大値)
+    // このゾーンに該当するバーの範囲 (clamp to [0, erectLen])
+    const barFromCm = Math.max(0, segFromCm);
+    const barToCm   = Math.min(erectLen, segToCm);
+    if (barToCm <= barFromCm) return null;
+    // Y座標（上がマイナス方向）
+    const yFrom = yGroin - p(barToCm);   // 上端（先端側）
+    const yTo   = yGroin - p(barFromCm); // 下端（股下側）
+    return { yFrom, yTo, height: yTo - yFrom, color: z.color };
+  }).filter(Boolean);
+
+  return (
+    <g>
+      {/* 接続線: シルエット中心→バー */}
+      <line x1={cx} y1={yGroin} x2={bx - bw/2 - 2} y2={yGroin}
+        stroke={col} strokeWidth={1} strokeDasharray="3,3" opacity={0.4} />
+
+      {/* ゾーン色分けバー */}
+      {segments.map((seg, si) => (
+        <rect key={si} x={bx - bw/2} y={seg.yFrom} width={bw} height={seg.height}
+          fill={seg.color} opacity={0.55} />
+      ))}
+
+      {/* 輪郭(破線) */}
+      <rect x={bx - bw/2} y={yTip} width={bw} height={barH}
+        rx={bw/2} fill="none" stroke={col} strokeWidth={2}
+        strokeDasharray="5,3" opacity={0.85} />
+
+      {/* 先端水平ライン */}
+      <line x1={bx - bw*2.5} y1={yTip} x2={bx + bw*2.5} y2={yTip}
+        stroke={col} strokeWidth={2} opacity={0.9} />
+
+      {/* 到達ゾーンラベル */}
+      <rect x={bx - 28} y={yTip - 40} width={56} height={15} rx={3}
+        fill={reachZone.color} opacity={0.85} />
+      <text x={bx} y={yTip - 29} textAnchor="middle" fill="#fff"
+        fontSize={9} fontWeight="700" fontFamily="inherit">{reachZone.label}まで</text>
+
+      {/* 先端ラベル（長さ + 直径） */}
+      <rect x={bx - 30} y={yTip - 22} width={60} height={20} rx={4}
+        fill={col} opacity={0.92} />
+      <text x={bx} y={yTip - 9} textAnchor="middle" fill="#fff"
+        fontSize={10} fontWeight="700" fontFamily="inherit">{erectLen}cm</text>
+      {sourceChar.parts.penisErectDiam > 0 && (
+        <text x={bx} y={yTip + 2} textAnchor="middle" fill={col}
+          fontSize={8} fontFamily="inherit" opacity={0.85}>
+          φ{sourceChar.parts.penisErectDiam}cm
+        </text>
+      )}
+
+      {/* キャラ名 */}
+      <text x={bx + bw/2 + 5} y={yGroin - barH * 0.5}
+        fill={col} fontSize={9} fontWeight="700" fontFamily="inherit">{sourceChar.name}</text>
+      <text x={bx + bw/2 + 5} y={yGroin - barH * 0.5 + 12}
+        fill={col} fontSize={8} fontFamily="inherit" opacity={0.8}>の勃起時</text>
+
+      {/* 股下基準線 */}
+      <line x1={bx - bw/2 - 2} y1={yGroin} x2={bx + bw/2 + 2} y2={yGroin}
+        stroke={col} strokeWidth={1.5} opacity={0.5} />
+      <text x={bx + bw/2 + 5} y={yGroin + 4}
+        fill="#9ca3af" fontSize={8} fontFamily="inherit">股下</text>
+    </g>
+  );
+}
+
+// ─── PartRow ──────────────────────────────────────────────────────────────────
+function PartRow({ partKey, value, meta, color, onChange, hint }) {
+  const pct = Math.min(100, Math.max(0, ((value - meta.min) / (meta.max - meta.min)) * 100));
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <div>
+          <span style={{ fontSize: 12, color: "#374151", fontWeight: 500 }}>{meta.label}</span>
+          {hint && <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 5 }}>{hint}</span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <SmartInput value={value} min={meta.min} max={meta.max} step={meta.step}
+            onCommit={v => onChange(partKey, v)} color={color} />
+          <span style={{ fontSize: 11, color: "#9ca3af", width: 20 }}>{meta.unit}</span>
+        </div>
+      </div>
+      <div style={{ position: "relative", height: 6, background: "#e5e7eb", borderRadius: 3 }}>
+        <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${pct}%`, background: color, borderRadius: 3 }} />
+        <div style={{ position: "absolute", top: "50%", transform: "translateY(-50%)", left: `calc(${pct}% - 7px)`, width: 14, height: 14, borderRadius: "50%", background: "#fff", border: `2px solid ${color}`, boxShadow: "0 1px 3px rgba(0,0,0,0.2)", pointerEvents: "none" }} />
+        <input type="range" min={meta.min} max={meta.max} step={meta.step} value={value}
+          onChange={e => onChange(partKey, parseFloat(e.target.value))}
+          style={{ position: "absolute", top: -8, left: 0, width: "100%", height: 22, opacity: 0, cursor: "pointer" }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+        <span style={{ fontSize: 10, color: "#e5e7eb" }}>{meta.min}</span>
+        <span style={{ fontSize: 10, color: "#e5e7eb" }}>{meta.max}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── CharPanel ────────────────────────────────────────────────────────────────
+function CharPanel({ char, onChange, onAutoReset }) {
+  const c = char.color, male = char.gender === "male";
+  const SL = ({ children }) => (
+    <div style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>{children}</div>
+  );
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ marginBottom: 14 }}>
+        <SL>表示名</SL>
+        <input value={char.name} onChange={e => onChange("name", e.target.value)} maxLength={16}
+          style={{ width: "100%", padding: "8px 10px", borderRadius: 7, fontSize: 13, border: `1.5px solid ${c}55`, outline: "none", fontFamily: "inherit", color: "#1f2937" }}
+          onFocus={e => e.target.style.borderColor = c}
+          onBlur={e => e.target.style.borderColor = `${c}55`} />
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <SL>性別</SL>
+        <div style={{ display: "flex", gap: 6 }}>
+          {[["male","♂ 男性"],["female","♀ 女性"]].map(([g, lbl]) => (
+            <button key={g} onClick={() => onChange("gender", g)} style={{ flex: 1, padding: "7px 6px", borderRadius: 7, fontSize: 12, background: char.gender===g?c:"#f3f4f6", color: char.gender===g?"#fff":"#6b7280", border: `1.5px solid ${char.gender===g?c:"#e5e7eb"}`, fontWeight: char.gender===g?700:400, fontFamily: "inherit" }}>{lbl}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginBottom: 18 }}>
+        <SL>カラー</SL>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {PRESET_COLORS.map(col => (
+            <div key={col} onClick={() => onChange("color", col)} style={{ width: 22, height: 22, borderRadius: "50%", background: col, cursor: "pointer", border: char.color===col?"3px solid #1f2937":"2px solid transparent", outline: char.color===col?`2px solid ${col}`:"none", outlineOffset: 1 }} />
+          ))}
+        </div>
+      </div>
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <SL>ボディパラメータ</SL>
+          <button onClick={onAutoReset} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 5, background: "#f3f4f6", color: "#6b7280", border: "1px solid #e5e7eb", fontFamily: "inherit" }}>自動計算に戻す</button>
+        </div>
+        <div style={{ fontSize: 11, color: "#6b7280", padding: "7px 10px", background: "#f9fafb", borderRadius: 6, marginBottom: 12, lineHeight: 1.6 }}>
+          💡 身長変更で全部位を自動計算。各スライダーで個別調整可。
+        </div>
+        {["height","legLength","torsoWidth","handSize"].map(key => (
+          <PartRow key={key} partKey={key} value={char.parts[key] ?? 0} meta={PARTS_META[key]} color={c} onChange={onChange} />
+        ))}
+        {male && (
+          <>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.08em", textTransform: "uppercase", margin: "14px 0 8px", paddingTop: 12, borderTop: "1px solid #f3f4f6" }}>
+              男性器サイズ
+            </div>
+            <PartRow partKey="penisFlaccid"     value={char.parts.penisFlaccid ?? 0}     meta={PARTS_META.penisFlaccid}     color={c} onChange={onChange} />
+            <PartRow partKey="penisFlaccidDiam" value={char.parts.penisFlaccidDiam ?? 0} meta={PARTS_META.penisFlaccidDiam} color={c} onChange={onChange}
+              hint={char.parts.penisFlaccidDiam > 0 ? `周径≈${diam2girth(char.parts.penisFlaccidDiam).toFixed(1)}cm` : ""} />
+            <PartRow partKey="penisErect"       value={char.parts.penisErect ?? 0}       meta={PARTS_META.penisErect}       color={c} onChange={onChange} />
+            <PartRow partKey="penisErectDiam"   value={char.parts.penisErectDiam ?? 0}   meta={PARTS_META.penisErectDiam}   color={c} onChange={onChange}
+              hint={char.parts.penisErectDiam > 0 ? `周径≈${diam2girth(char.parts.penisErectDiam).toFixed(1)}cm` : ""} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── DiameterScaleView（旧:断面図 → 実寸比スケール）────────────────────────
+function DiameterScaleView({ chars }) {
+  const SCALE = 14; // px per cm of diameter
+  const sections = [
+    { key: "penisErectDiam",   label: "勃起時 直径",  note: "φ = 直径" },
+    { key: "penisFlaccidDiam", label: "平常時 直径",  note: "φ = 直径" },
+  ];
+  const PAD_L = 120, COL_W = 160;
+  const svgW = PAD_L + COL_W * chars.length + 40;
+  // 最大直径から高さ計算
+  const maxDiam = Math.max(...chars.map(c => Math.max(c.parts.penisErectDiam??0, c.parts.penisFlaccidDiam??0)), 1);
+  const maxR = (maxDiam / 2) * SCALE;
+  const ROW_H = Math.max(maxR * 2 + 50, 100);
+  const svgH = sections.length * ROW_H + 60;
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "auto", marginBottom: 20, boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
+      <div style={{ padding: "10px 16px 0", fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+        実寸比スケール（直径）
+      </div>
+      <svg width={Math.max(svgW, 400)} height={svgH} style={{ display: "block" }}>
+        {/* キャラ列ヘッダ */}
+        {chars.map((c, ci) => {
+          const cx = PAD_L + ci * COL_W + COL_W / 2;
+          return (
+            <g key={c.id}>
+              <rect x={cx-36} y={10} width={72} height={16} rx={3} fill={c.color} opacity={0.12} />
+              <text x={cx} y={22} textAnchor="middle" fill={c.color} fontSize={11} fontWeight="700" fontFamily="inherit">{c.name}</text>
+            </g>
+          );
+        })}
+        {sections.map((sec, si) => {
+          const cy = 45 + si * ROW_H + ROW_H / 2;
+          return (
+            <g key={sec.key}>
+              {si > 0 && <line x1={0} y1={45 + si * ROW_H - 10} x2={svgW} y2={45 + si * ROW_H - 10} stroke="#f3f4f6" strokeWidth={1} />}
+              <text x={8} y={cy - 14} fill="#374151" fontSize={11} fontWeight="700" fontFamily="inherit">{sec.label}</text>
+              <text x={8} y={cy - 2}  fill="#9ca3af" fontSize={9}  fontFamily="inherit">{sec.note}</text>
+              {chars.map((c, ci) => {
+                const colCx = PAD_L + ci * COL_W + COL_W / 2;
+                const diam = c.gender === "female" ? null : (c.parts[sec.key] ?? null);
+                if (diam == null || diam <= 0) {
+                  return <text key={ci} x={colCx} y={cy + 5} textAnchor="middle" fill="#d1d5db" fontSize={11} fontFamily="inherit">—</text>;
+                }
+                const r = Math.min((diam / 2) * SCALE, ROW_H / 2 - 10);
+                return (
+                  <g key={ci}>
+                    <ellipse cx={colCx} cy={cy} rx={r} ry={r}
+                      fill={c.color} opacity={0.22} stroke={c.color} strokeWidth={1.5} />
+                    <line x1={colCx - r} y1={cy} x2={colCx + r} y2={cy} stroke={c.color} strokeWidth={1} strokeDasharray="3,2" opacity={0.5} />
+                    <text x={colCx} y={cy + 5} textAnchor="middle" fill={c.color} fontSize={11} fontWeight="700" fontFamily="inherit">φ{diam}cm</text>
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })}
+      </svg>
+      <div style={{ padding: "6px 16px 12px", fontSize: 10, color: "#9ca3af" }}>
+        ※ 各円は直径の実寸比。直径→周径: 周径 ≈ 直径 × π（≈ 直径 × 3.14159）
+      </div>
+    </div>
+  );
+}
+
+// ─── SourceTable ──────────────────────────────────────────────────────────────
+function SourceTable({ chars }) {
+  const hasMale = chars.some(c => c.gender === "male");
+  const rows = AUTO_CALC_SOURCES.filter(s => !s.key.startsWith("penis") || hasMale);
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 20 }}>
+      <div style={{ padding: "10px 16px", borderBottom: "1px solid #f3f4f6", fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.08em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}>
+        <span>自動計算の根拠・参考ソース</span>
+        <span style={{ fontSize: 10, fontWeight: 400, color: "#d1d5db", background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: 4, padding: "1px 6px" }}>参考値 — 実際の個人差あり</span>
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+              <th style={{ padding: "7px 14px", textAlign: "left", color: "#6b7280", fontWeight: 600, width: 170 }}>部位</th>
+              <th style={{ padding: "7px 14px", textAlign: "left", color: "#6b7280", fontWeight: 600, width: 240 }}>計算式</th>
+              <th style={{ padding: "7px 14px", textAlign: "left", color: "#6b7280", fontWeight: 600 }}>参考ソース・備考</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={row.key} style={{ borderBottom: ri < rows.length-1 ? "1px solid #f9fafb" : "none" }}>
+                <td style={{ padding: "8px 14px", color: "#374151", fontWeight: 500 }}>{row.label}</td>
+                <td style={{ padding: "8px 14px" }}>
+                  <div style={{ color: "#1f2937", fontSize: 11, fontFamily: "monospace", lineHeight: 1.7 }}>
+                    {row.fmM !== "—" && <div><span style={{ color: "#6b7280", fontSize: 10 }}>♂ </span>{row.fmM}</div>}
+                    {!row.key.startsWith("penis") && <div><span style={{ color: "#6b7280", fontSize: 10 }}>♀ </span>{row.fmF}</div>}
+                  </div>
+                </td>
+                <td style={{ padding: "8px 14px" }}>
+                  <div style={{ color: "#374151", fontSize: 11, lineHeight: 1.6 }}>{row.source}</div>
+                  {row.note && <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 2 }}>※ {row.note}</div>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ padding: "8px 14px", borderTop: "1px solid #f3f4f6", fontSize: 10, color: "#9ca3af", lineHeight: 1.6 }}>
+        ⚠️ 全ての数値は統計的平均値・比率です。個人差・人種差・年齢差が存在します。創作資料としての参考値としてご利用ください。
+      </div>
+    </div>
+  );
+}
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+export default function App() {
+  const [chars, setChars] = useState([newChar(0), newChar(1)]);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [insertMode, setInsertMode] = useState(null);
+  const [tab, setTab] = useState("silhouette");
+  // モーダル state
+
+
+  const update = useCallback((i, fn) => setChars(p => p.map((c, j) => j === i ? fn(c) : c)), []);
+  const handleChange = useCallback((field, val) => {
+    update(activeIdx, c => {
+      if (field === "name" || field === "color") return { ...c, [field]: val };
+      if (field === "gender") return { ...c, gender: val, parts: autoCalc(c.parts.height, val) };
+      if (field === "height") return { ...c, parts: autoCalc(val, c.gender) };
+      return { ...c, parts: { ...c.parts, [field]: val } };
+    });
+  }, [activeIdx, update]);
+  const autoReset = () => update(activeIdx, c => ({ ...c, parts: autoCalc(c.parts.height, c.gender) }));
+
+
+
+
+
+  const cur = chars[Math.min(activeIdx, chars.length - 1)];
+  const c0 = chars[0], c1 = chars[1];
+  const SLOT_W = 250, PAD = 50;
+  const maxH = Math.max(...chars.map(c => c.parts.height));
+  const svgH = maxH * CM + 100, svgW = chars.length * SLOT_W + PAD * 2, groundY = svgH - 60;
+  const cx0 = PAD + SLOT_W / 2, cx1 = PAD + SLOT_W + SLOT_W / 2;
+  const gh0 = groinHeightCm(c0.parts), gh1 = groinHeightCm(c1.parts);
+  const yGroin0 = groundY - gh0 * CM, yGroin1 = groundY - gh1 * CM;
+  const hasMale = chars.some(c => c.gender === "male");
+  const cmpKeys = ["height","torsoWidth","legLength","handSize",
+    ...(hasMale ? ["penisFlaccid","penisErect","penisFlaccidDiam","penisErectDiam"] : [])];
+  const canIns0to1 = c0.gender==="male" && (c0.parts.penisErect??0) > 0;
+  const canIns1to0 = c1.gender==="male" && (c1.parts.penisErect??0) > 0;
+  const canInsAny = canIns0to1 || canIns1to0;
+
+  const TABS = [{ id: "silhouette", label: "シルエット" }, { id: "section", label: "実寸比スケール" }];
+
+  return (
+    <div style={{ fontFamily: "'Noto Sans JP','Hiragino Sans','Meiryo',sans-serif", background: "#f5f4f0", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Syne:wght@700;800&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 7px; height: 7px; background: #f3f4f6; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+        input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 0; height: 0; }
+        button { cursor: pointer; border: none; outline: none; }
+        .side-panel {
+          width: 310px;
+          border-left: 1px solid #e5e7eb;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          background: #fff;
+          flex-shrink: 0;
+          transition: transform 0.22s ease;
+        }
+        @media (max-width: 639px) {
+          .side-panel {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            z-index: 200;
+            border-left: none;
+            border-top: 2px solid #e5e7eb;
+          }
+          .side-panel-overlay {
+            display: block !important;
+          }
+          .header-subtitle { display: none; }
+          .header-char-indicators { display: none !important; }
+          .header-btn-text { display: none; }
+        }
+        .side-panel-overlay {
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.4);
+          z-index: 199;
+        }
+      `}</style>
+
+      {/* ── ヘッダ ── */}
+      <header style={{ background: "#1f2937", padding: "9px 14px", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.18)", flexShrink: 0, flexWrap: "wrap" }}>
+        <span style={{ fontFamily: "Syne,sans-serif", fontSize: 15, fontWeight: 800, color: "#f9fafb", letterSpacing: "0.04em" }}>体格比較ツール</span>
+        <span className="header-subtitle" style={{ fontSize: 11, color: "#6b7280" }}>キャラクター体格資料作成</span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="header-char-indicators" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {chars.map(c => (
+              <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#d1d5db" }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.color }} />{c.name}
+              </div>
+            ))}
+          </div>
+          <button onClick={() => setPanelOpen(p => !p)} style={{ padding: "5px 10px", borderRadius: 6, fontSize: 11, background: panelOpen?"#4b5563":"#3b82f6", color: "#fff", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+            {panelOpen ? "✕ 閉じる" : "⚙ 編集"}
+          </button>
+        </div>
+      </header>
+
+      {/* ── メイン ── */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
+        <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "12px 10px", background: "#fafaf8" }}>
+
+          {/* タブ */}
+          <div style={{ display: "flex", gap: 2, marginBottom: 14, background: "#fff", borderRadius: 9, padding: 4, border: "1px solid #e5e7eb", width: "fit-content", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+            {TABS.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "8px 16px", borderRadius: 6, fontSize: 12, fontFamily: "inherit", background: tab===t.id?"#1f2937":"transparent", color: tab===t.id?"#fff":"#6b7280", fontWeight: tab===t.id?700:400 }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* 挿入シミュレーションボタン */}
+          {canInsAny && tab === "silhouette" && (
+            <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 16px", marginBottom: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", letterSpacing: "0.06em", textTransform: "uppercase" }}>挿入シミュレーション</span>
+              {[
+                [canIns0to1, "0→1", `${c0.name} → ${c1.name}`, c0.color],
+                [canIns1to0, "1→0", `${c1.name} → ${c0.name}`, c1.color],
+                [canIns0to1 && canIns1to0, "both", "両方同時", "#6b7280"],
+              ].filter(b => b[0]).map(([, mode, lbl, col]) => {
+                const active = insertMode === mode;
+                return (
+                  <button key={mode} onClick={() => setInsertMode(active ? null : mode)}
+                    style={{ padding: "5px 14px", borderRadius: 7, fontSize: 12, fontFamily: "inherit", background: active?col:"#f3f4f6", color: active?"#fff":"#374151", border: `1.5px solid ${active?col:"#e5e7eb"}`, fontWeight: active?700:400 }}>
+                    {active ? "▶ 表示中 " : "▷ "}{lbl}
+                  </button>
+                );
+              })}
+              {insertMode && (
+                <button onClick={() => setInsertMode(null)} style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 6, fontSize: 11, fontFamily: "inherit", background: "#f9fafb", color: "#9ca3af", border: "1px solid #e5e7eb" }}>✕ 消す</button>
+              )}
+              <div style={{ fontSize: 10, color: "#9ca3af", width: "100%", marginTop: 2 }}>
+                ゾーン色：<span style={{ color: "#3b82f6", fontWeight: 700 }}>■ 下腹部</span>　<span style={{ color: "#f97316", fontWeight: 700 }}>■ 腹部</span>　<span style={{ color: "#ef4444", fontWeight: 700 }}>■ 胸部</span>　<span style={{ color: "#7c3aed", fontWeight: 700 }}>■ 胸上</span>
+              </div>
+            </div>
+          )}
+
+          {/* ── シルエットタブ ── */}
+          {tab === "silhouette" && (
+            <>
+              <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "auto", marginBottom: 16, boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
+                <div style={{ padding: "10px 16px 0", fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.08em", textTransform: "uppercase" }}>シルエット比較</div>
+                <svg width={Math.max(svgW, 400)} height={svgH} style={{ display: "block", minWidth: svgW }}>
+                  {/* グリッド */}
+                  {[50,100,150,200,250,300,350,400].map(v => {
+                    const y = groundY - v * CM; if (y < 0) return null;
+                    return (
+                      <g key={v}>
+                        <line x1={0} y1={y} x2={svgW} y2={y} stroke={v%100===0?"#d1d5db":"#e5e7eb"} strokeWidth={v%100===0?1:0.7} strokeDasharray={v%100===0?"none":"4,4"} />
+                        <text x={8} y={y-4} fill="#9ca3af" fontSize={10} fontFamily="inherit">{v}cm</text>
+                      </g>
+                    );
+                  })}
+                  <line x1={0} y1={groundY} x2={svgW} y2={groundY} stroke="#6b7280" strokeWidth={1.5} />
+
+                  {/* 股下高さ差ライン */}
+                  {Math.abs(yGroin0 - yGroin1) > 3 && (
+                    <g>
+                      <line x1={cx0} y1={yGroin0} x2={cx1} y2={yGroin0} stroke={c0.color} strokeWidth={1} strokeDasharray="4,3" opacity={0.4} />
+                      <line x1={cx0} y1={yGroin1} x2={cx1} y2={yGroin1} stroke={c1.color} strokeWidth={1} strokeDasharray="4,3" opacity={0.4} />
+                      <line x1={svgW/2} y1={Math.min(yGroin0,yGroin1)} x2={svgW/2} y2={Math.max(yGroin0,yGroin1)} stroke="#9ca3af" strokeWidth={1.5} opacity={0.4} />
+                      <rect x={svgW/2+4} y={(yGroin0+yGroin1)/2-8} width={60} height={14} rx={3} fill="#6b7280" opacity={0.15} />
+                      <text x={svgW/2+34} y={(yGroin0+yGroin1)/2+3} textAnchor="middle" fill="#6b7280" fontSize={9} fontWeight="700" fontFamily="inherit">股差{Math.abs(gh0-gh1).toFixed(1)}cm</text>
+                    </g>
+                  )}
+
+                  {/* ① シルエット本体（先に描く） */}
+                  {chars.map((c, i) => {
+                    const cx = PAD + i * SLOT_W + SLOT_W / 2, topY = groundY - c.parts.height * CM;
+                    return (
+                      <g key={c.id}>
+                        <line x1={cx} y1={topY} x2={cx} y2={groundY} stroke={c.color} strokeWidth={0.6} opacity={0.2} strokeDasharray="3,5" />
+                        <BodySVG parts={c.parts} gender={c.gender} color={c.color} cx={cx} groundY={groundY} />
+                        <text x={cx} y={topY-10} textAnchor="middle" fill={c.color} fontSize={11} fontWeight="700" fontFamily="inherit">{c.parts.height}cm</text>
+                        <rect x={cx-48} y={groundY+8} width={96} height={18} rx={4} fill={c.color} opacity={0.1} />
+                        <text x={cx} y={groundY+20} textAnchor="middle" fill={c.color} fontSize={12} fontWeight="700" fontFamily="inherit">{c.name}</text>
+                        <text x={cx} y={groundY+37} textAnchor="middle" fill="#9ca3af" fontSize={9} fontFamily="inherit">{c.gender==="male"?"♂ 男性":"♀ 女性"}</text>
+                      </g>
+                    );
+                  })}
+
+                  {/* ② 挿入オーバーレイ（シルエットの後＝前面） */}
+                  {(insertMode==="0→1"||insertMode==="both") && <InsertionOverlay targetChar={c1} sourceChar={c0} cx={cx1} groundY={groundY} />}
+                  {(insertMode==="1→0"||insertMode==="both") && <InsertionOverlay targetChar={c0} sourceChar={c1} cx={cx0} groundY={groundY} />}
+                </svg>
+              </div>
+
+              {/* 数値比較テーブル */}
+              <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 16 }}>
+                <div style={{ padding: "10px 16px", borderBottom: "1px solid #f3f4f6", fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.08em", textTransform: "uppercase" }}>数値比較</div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
+                        <th style={{ padding: "9px 14px", textAlign: "left", fontWeight: 700, color: "#374151", fontSize: 12, width: 200 }}>部位</th>
+                        {chars.map(c => <th key={c.id} style={{ padding: "9px 14px", textAlign: "center", color: c.color, fontWeight: 700, fontSize: 13 }}>{c.name}</th>)}
+                        <th style={{ padding: "9px 14px", textAlign: "center", color: "#6b7280", fontWeight: 600, fontSize: 12 }}>差分（2体目基準）</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cmpKeys.map((key, ri) => {
+                        const meta = PARTS_META[key];
+                        const isPenis = key.startsWith("penis");
+                        const isDiam = key.endsWith("Diam");
+                        const vals = chars.map(c => isPenis ? (c.gender==="male" ? (c.parts[key]??null) : null) : (c.parts[key]??null));
+                        const defined = vals.filter(v => v != null);
+                        const maxVal = defined.length ? Math.max(...defined) : null;
+                        return (
+                          <tr key={key} style={{ borderBottom: ri<cmpKeys.length-1?"1px solid #f3f4f6":"none", background: isDiam?"#fafffe":"transparent" }}>
+                            <td style={{ padding: "8px 14px", color: "#4b5563", fontWeight: 500, fontSize: 12 }}>
+                              {meta.label}
+                              {isDiam && vals[0]!=null && (
+                                <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 4 }}>
+                                  (周径≈{diam2girth(vals[0]).toFixed(1)}/{vals[1]!=null?diam2girth(vals[1]).toFixed(1):"—"}cm)
+                                </span>
+                              )}
+                            </td>
+                            {vals.map((v, i) => (
+                              <td key={i} style={{ padding: "8px 14px", textAlign: "center", fontWeight: v!=null&&v===maxVal?700:400, color: v==null?"#d1d5db":v===maxVal?chars[i].color:"#374151" }}>
+                                {v==null?"—":`${v}cm`}
+                              </td>
+                            ))}
+                            {(() => {
+                              const [a, b] = vals;
+                              if (a==null||b==null) return <td style={{ padding:"8px 14px",textAlign:"center",color:"#d1d5db" }}>—</td>;
+                              const diff = (b-a).toFixed(isDiam?2:1);
+                              const col = Number(diff)>0?"#16a34a":Number(diff)<0?"#dc2626":"#9ca3af";
+                              return <td style={{ padding:"8px 14px",textAlign:"center" }}><span style={{ color:col,fontWeight:700 }}>{Number(diff)>0?`+${diff}`:diff}cm</span></td>;
+                            })()}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <SourceTable chars={chars} />
+            </>
+          )}
+
+          {tab === "section" && <DiameterScaleView chars={chars} />}
+        </div>
+
+        {/* 右パネル：スマホ時はフルオーバーレイ、PC時はサイドパネル */}
+        {panelOpen && (
+          <>
+            <div className="side-panel-overlay" onClick={() => setPanelOpen(false)} />
+            <div className="side-panel">
+              <div style={{ display: "flex", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", flexShrink: 0, padding: "0 6px", alignItems: "center" }}>
+                {chars.map((c, i) => (
+                  <button key={c.id} onClick={() => setActiveIdx(i)} style={{ flex: 1, padding: "12px 6px", fontSize: 13, background: activeIdx===i?"#fff":"transparent", color: activeIdx===i?c.color:"#9ca3af", fontWeight: activeIdx===i?700:400, borderBottom: `2.5px solid ${activeIdx===i?c.color:"transparent"}`, marginBottom: -1, fontFamily: "inherit" }}>
+                    {c.name}
+                  </button>
+                ))}
+                <button onClick={() => setPanelOpen(false)} style={{ padding: "8px 14px", fontSize: 18, color: "#9ca3af", background: "none", fontFamily: "inherit", flexShrink: 0 }}>✕</button>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto" }}>
+                {cur && <CharPanel char={cur} onChange={handleChange} onAutoReset={autoReset} />}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
