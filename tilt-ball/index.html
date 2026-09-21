@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#111827" />
-  <title>Tilt Ball Prototype v0.1</title>
+  <title>Tilt Ball Prototype v0.2</title>
   <style>
     :root { color-scheme: dark; font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#0b1020; color:#eef2ff; }
     * { box-sizing:border-box; }
@@ -38,7 +38,7 @@
 <body>
   <main class="wrap">
     <div class="top">
-      <div><div class="title">Tilt Ball Prototype v0.1</div><div id="status" class="status">センサー待機中</div></div>
+      <div><div class="title">Tilt Ball Prototype v0.2</div><div id="status" class="status">センサー待機中</div></div>
       <div class="buttons">
         <button id="start" class="primary" type="button">傾き操作を開始</button>
         <button id="calibrate" type="button" disabled>ここを水平にする</button>
@@ -54,6 +54,10 @@
       <div class="card"><div class="k">入力 X / Y</div><div class="v" id="input">0.00 / 0.00</div></div>
       <div class="card"><div class="k">速度 X / Y</div><div class="v" id="velocity">0 / 0</div></div>
       <div class="card"><div class="k">画面向き</div><div class="v" id="screenAngle">0°</div></div>
+      <div class="card"><div class="k">使用中の入力</div><div class="v" id="source">none</div></div>
+      <div class="card"><div class="k">イベント数 O / M / G</div><div class="v" id="events">0 / 0 / 0</div></div>
+      <div class="card"><div class="k">API / Secure</div><div class="v" id="api">確認中…</div></div>
+      <div class="card"><div class="k">Motion x / y / z</div><div class="v" id="motion">-- / -- / --</div></div>
     </section>
     <section class="fallback card">
       <div class="k">センサーが使えない時の動作確認</div>
@@ -63,7 +67,7 @@
         <button class="right" data-x="1" data-y="0" type="button" aria-label="右">▶</button>
         <button class="down" data-x="0" data-y="1" type="button" aria-label="下">▼</button>
       </div>
-      <div class="note">PCでは矢印キー / WASD でも動きます。実機の傾き取得はブラウザ仕様上 HTTPS が必要です。</div>
+      <div class="note">v0.2は deviceorientation / devicemotion / Generic Sensor を同時診断します。PCでは矢印キー / WASD でも動きます。</div>
     </section>
   </main>
   <script>
@@ -71,24 +75,160 @@
       "use strict";
       const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
       const statusEl=document.getElementById("status"),anglesEl=document.getElementById("angles"),inputEl=document.getElementById("input"),velocityEl=document.getElementById("velocity"),screenAngleEl=document.getElementById("screenAngle");
+      const sourceEl=document.getElementById("source"),eventsEl=document.getElementById("events"),apiEl=document.getElementById("api"),motionEl=document.getElementById("motion");
       const startBtn=document.getElementById("start"),calibrateBtn=document.getElementById("calibrate"),resetBtn=document.getElementById("reset");
       const world={w:600,h:800,pad:26},ball={x:300,y:400,vx:0,vy:0,r:25};
-      let sensorActive=false,sensorReceived=false,beta=0,gamma=0,baseBeta=0,baseGamma=0,sensorX=0,sensorY=0,manualX=0,manualY=0,lastTime=performance.now();
       const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
       const screenAngle=()=>{const a=screen.orientation&&typeof screen.orientation.angle==="number"?screen.orientation.angle:(typeof window.orientation==="number"?window.orientation:0);return((a%360)+360)%360;};
-      function transformTilt(rawGamma,rawBeta){const angle=screenAngle();let x=rawGamma-baseGamma,y=rawBeta-baseBeta;if(angle===90)[x,y]=[y,-x];else if(angle===270)[x,y]=[-y,x];else if(angle===180)[x,y]=[-x,-y];return{x:clamp(x/28,-1,1),y:clamp(y/28,-1,1)};}
-      function onOrientation(e){if(typeof e.beta!=="number"||typeof e.gamma!=="number")return;beta=e.beta;gamma=e.gamma;sensorReceived=true;const t=transformTilt(gamma,beta);sensorX=t.x;sensorY=t.y;anglesEl.textContent=`${beta.toFixed(1)}° / ${gamma.toFixed(1)}°`;screenAngleEl.textContent=`${screenAngle()}°`;statusEl.textContent="傾きセンサー取得中";}
-      async function requestSensor(){startBtn.disabled=true;statusEl.textContent="センサー権限を確認中…";try{if(!window.isSecureContext)throw new Error("このページはHTTPSではありません。傾きセンサーはHTTPS上で開いてください。");if(!("DeviceOrientationEvent" in window))throw new Error("このブラウザでは端末傾きAPIを利用できません。");if(typeof DeviceOrientationEvent.requestPermission==="function"){const result=await DeviceOrientationEvent.requestPermission();if(result!=="granted")throw new Error("傾きセンサーの利用が許可されませんでした。");}window.addEventListener("deviceorientation",onOrientation,true);sensorActive=true;calibrateBtn.disabled=false;startBtn.textContent="傾き操作 ON";statusEl.textContent="スマホを傾けてください";setTimeout(()=>{if(sensorActive&&!sensorReceived)statusEl.textContent="権限は取得しましたが、センサーデータが届いていません";},1500);}catch(err){statusEl.textContent=err&&err.message?err.message:"センサーを開始できませんでした";startBtn.disabled=false;startBtn.textContent="もう一度試す";}}
-      function calibrate(){baseBeta=beta;baseGamma=gamma;sensorX=0;sensorY=0;statusEl.textContent=`ニュートラル設定: beta ${baseBeta.toFixed(1)}° / gamma ${baseGamma.toFixed(1)}°`;}
+      let sensorActive=false,lastTime=performance.now(),manualX=0,manualY=0;
+      let beta=0,gamma=0,baseBeta=null,baseGamma=null,ori={x:0,y:0,last:0,count:0};
+      let baseMotionX=null,baseMotionY=null,motion={x:0,y:0,z:0,last:0,count:0};
+      let baseGenericX=null,baseGenericY=null,generic={x:0,y:0,z:0,last:0,count:0,name:"none"},genericSensor=null;
+      function rotateXY(x,y){
+        const a=screenAngle();
+        if(a===90) return {x:y,y:-x};
+        if(a===270) return {x:-y,y:x};
+        if(a===180) return {x:-x,y:-y};
+        return {x,y};
+      }
+      function updateDebug(){
+        eventsEl.textContent=`${ori.count} / ${motion.count} / ${generic.count}`;
+        screenAngleEl.textContent=`${screenAngle()}°`;
+      }
+      function onOrientation(e){
+        if(!Number.isFinite(e.beta)||!Number.isFinite(e.gamma))return;
+        beta=e.beta; gamma=e.gamma;
+        if(baseBeta===null){baseBeta=beta;baseGamma=gamma;}
+        let p=rotateXY(gamma-baseGamma,beta-baseBeta);
+        ori.x=clamp(p.x/24,-1,1); ori.y=clamp(p.y/24,-1,1); ori.last=performance.now(); ori.count++;
+        anglesEl.textContent=`${beta.toFixed(1)}° / ${gamma.toFixed(1)}°`; updateDebug();
+      }
+      function onMotion(e){
+        const a=e.accelerationIncludingGravity;
+        if(!a||!Number.isFinite(a.x)||!Number.isFinite(a.y))return;
+        const p=rotateXY(a.x,a.y);
+        if(baseMotionX===null){baseMotionX=p.x;baseMotionY=p.y;}
+        motion.x=clamp((p.x-baseMotionX)/4.5,-1,1);
+        motion.y=clamp(-(p.y-baseMotionY)/4.5,-1,1);
+        motion.z=Number.isFinite(a.z)?a.z:0; motion.last=performance.now(); motion.count++;
+        motionEl.textContent=`${a.x.toFixed(2)} / ${a.y.toFixed(2)} / ${motion.z.toFixed(2)}`; updateDebug();
+      }
+      function chooseInput(){
+        const now=performance.now();
+        if(now-ori.last<700){sourceEl.textContent="deviceorientation";return {x:ori.x,y:ori.y};}
+        if(now-motion.last<700){sourceEl.textContent="devicemotion";return {x:motion.x,y:motion.y};}
+        if(now-generic.last<700){sourceEl.textContent=generic.name;return {x:generic.x,y:generic.y};}
+        sourceEl.textContent="none"; return {x:0,y:0};
+      }
+      async function permissionState(name){
+        try{
+          if(!navigator.permissions?.query)return "n/a";
+          const r=await navigator.permissions.query({name});
+          return r.state;
+        }catch{return "n/a";}
+      }
+      function featureAllowed(name){
+        try{
+          const p=document.permissionsPolicy||document.featurePolicy;
+          if(p?.allowsFeature)return p.allowsFeature(name)?"allow":"block";
+        }catch{}
+        return "?";
+      }
+      async function refreshApiInfo(){
+        const acc=await permissionState("accelerometer"), gyr=await permissionState("gyroscope");
+        const parts=[
+          window.isSecureContext?"HTTPS":"NOT-SECURE",
+          "DO:"+("DeviceOrientationEvent" in window?"yes":"no"),
+          "DM:"+("DeviceMotionEvent" in window?"yes":"no"),
+          "Acc:"+("Accelerometer" in window?"yes":"no"),
+          "Grav:"+("GravitySensor" in window?"yes":"no"),
+          "perm A/G:"+acc+"/"+gyr,
+          "policy A/G:"+featureAllowed("accelerometer")+"/"+featureAllowed("gyroscope")
+        ];
+        apiEl.textContent=parts.join(" · ");
+      }
+      async function startGenericSensor(){
+        try{
+          const Ctor=window.GravitySensor||window.Accelerometer;
+          if(!Ctor)return;
+          genericSensor=new Ctor({frequency:30});
+          generic.name=window.GravitySensor?"GravitySensor":"Accelerometer";
+          genericSensor.addEventListener("reading",()=>{
+            if(!Number.isFinite(genericSensor.x)||!Number.isFinite(genericSensor.y))return;
+            const p=rotateXY(genericSensor.x,genericSensor.y);
+            if(baseGenericX===null){baseGenericX=p.x;baseGenericY=p.y;}
+            generic.x=clamp((p.x-baseGenericX)/4.5,-1,1);
+            generic.y=clamp(-(p.y-baseGenericY)/4.5,-1,1);
+            generic.z=Number.isFinite(genericSensor.z)?genericSensor.z:0;
+            generic.last=performance.now(); generic.count++; updateDebug();
+          });
+          genericSensor.addEventListener("error",e=>{
+            const msg=e?.error?.name||e?.message||"Generic Sensor error";
+            statusEl.textContent="Generic Sensor: "+msg;
+          });
+          genericSensor.start();
+        }catch(e){
+          statusEl.textContent="Generic Sensor開始失敗: "+(e?.name||e?.message||"unknown");
+        }
+      }
+      async function requestSensor(){
+        startBtn.disabled=true; statusEl.textContent="センサー初期化中…";
+        try{
+          if(!window.isSecureContext)throw new Error("HTTPSではありません");
+          window.addEventListener("deviceorientation",onOrientation,true);
+          window.addEventListener("devicemotion",onMotion,true);
+          const requests=[];
+          if(typeof DeviceOrientationEvent?.requestPermission==="function")requests.push(DeviceOrientationEvent.requestPermission());
+          if(typeof DeviceMotionEvent?.requestPermission==="function")requests.push(DeviceMotionEvent.requestPermission());
+          if(requests.length){
+            const results=await Promise.all(requests);
+            if(results.some(x=>x!=="granted"))throw new Error("モーションセンサー権限が許可されませんでした");
+          }
+          await startGenericSensor();
+          sensorActive=true; calibrateBtn.disabled=false; startBtn.textContent="センサー診断 ON";
+          statusEl.textContent="端末をゆっくり傾けてください";
+          await refreshApiInfo();
+          setTimeout(()=>{
+            if(!ori.count&&!motion.count&&!generic.count){
+              statusEl.textContent="センサーイベント0件。下の API / Secure とイベント数を教えてください";
+            }
+          },2200);
+        }catch(e){
+          statusEl.textContent=e?.message||String(e); startBtn.disabled=false; startBtn.textContent="もう一度試す";
+          await refreshApiInfo();
+        }
+      }
+      function calibrate(){
+        baseBeta=beta;baseGamma=gamma;
+        if(motion.last){const a=motion; baseMotionX=null;baseMotionY=null;}
+        baseMotionX=null;baseMotionY=null;baseGenericX=null;baseGenericY=null;
+        ori.x=ori.y=motion.x=motion.y=generic.x=generic.y=0;
+        statusEl.textContent="現在の持ち方をニュートラルに再設定しました";
+      }
       function resetBall(){ball.x=300;ball.y=400;ball.vx=0;ball.vy=0;}
-      function update(dt){const ix=clamp(sensorX+manualX,-1,1),iy=clamp(sensorY+manualY,-1,1),accel=850,drag=Math.pow(.14,dt);ball.vx+=ix*accel*dt;ball.vy+=iy*accel*dt;ball.vx*=drag;ball.vy*=drag;const maxSpeed=650,speed=Math.hypot(ball.vx,ball.vy);if(speed>maxSpeed){const s=maxSpeed/speed;ball.vx*=s;ball.vy*=s;}ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;const minX=world.pad+ball.r,maxX=world.w-world.pad-ball.r,minY=world.pad+ball.r,maxY=world.h-world.pad-ball.r,bounce=.42;if(ball.x<minX){ball.x=minX;if(ball.vx<0)ball.vx*=-bounce;}if(ball.x>maxX){ball.x=maxX;if(ball.vx>0)ball.vx*=-bounce;}if(ball.y<minY){ball.y=minY;if(ball.vy<0)ball.vy*=-bounce;}if(ball.y>maxY){ball.y=maxY;if(ball.vy>0)ball.vy*=-bounce;}inputEl.textContent=`${ix.toFixed(2)} / ${iy.toFixed(2)}`;velocityEl.textContent=`${ball.vx.toFixed(0)} / ${ball.vy.toFixed(0)}`;}
-      function draw(){ctx.clearRect(0,0,600,800);ctx.fillStyle="#11182a";ctx.fillRect(0,0,600,800);ctx.strokeStyle="#60708f";ctx.lineWidth=5;ctx.strokeRect(world.pad,world.pad,world.w-world.pad*2,world.h-world.pad*2);const gx=300+(sensorX+manualX)*90,gy=400+(sensorY+manualY)*90;ctx.beginPath();ctx.moveTo(300,400);ctx.lineTo(gx,gy);ctx.strokeStyle="rgba(148,163,184,.34)";ctx.lineWidth=4;ctx.stroke();ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.fillStyle="#e5e7eb";ctx.fill();ctx.strokeStyle="#94a3b8";ctx.lineWidth=4;ctx.stroke();ctx.beginPath();ctx.arc(ball.x-ball.r*.28,ball.y-ball.r*.32,ball.r*.16,0,Math.PI*2);ctx.fillStyle="rgba(255,255,255,.75)";ctx.fill();}
+      function update(dt){
+        const s=chooseInput(),ix=clamp(s.x+manualX,-1,1),iy=clamp(s.y+manualY,-1,1),accel=850,drag=Math.pow(.14,dt);
+        ball.vx+=ix*accel*dt;ball.vy+=iy*accel*dt;ball.vx*=drag;ball.vy*=drag;
+        const maxSpeed=650,speed=Math.hypot(ball.vx,ball.vy);if(speed>maxSpeed){const q=maxSpeed/speed;ball.vx*=q;ball.vy*=q;}
+        ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
+        const minX=world.pad+ball.r,maxX=world.w-world.pad-ball.r,minY=world.pad+ball.r,maxY=world.h-world.pad-ball.r,b=.42;
+        if(ball.x<minX){ball.x=minX;if(ball.vx<0)ball.vx*=-b;} if(ball.x>maxX){ball.x=maxX;if(ball.vx>0)ball.vx*=-b;}
+        if(ball.y<minY){ball.y=minY;if(ball.vy<0)ball.vy*=-b;} if(ball.y>maxY){ball.y=maxY;if(ball.vy>0)ball.vy*=-b;}
+        inputEl.textContent=`${ix.toFixed(2)} / ${iy.toFixed(2)}`; velocityEl.textContent=`${ball.vx.toFixed(0)} / ${ball.vy.toFixed(0)}`;
+      }
+      function draw(){
+        ctx.clearRect(0,0,600,800);ctx.fillStyle="#11182a";ctx.fillRect(0,0,600,800);ctx.strokeStyle="#60708f";ctx.lineWidth=5;ctx.strokeRect(world.pad,world.pad,world.w-world.pad*2,world.h-world.pad*2);
+        const s=chooseInput(),gx=300+(s.x+manualX)*90,gy=400+(s.y+manualY)*90;ctx.beginPath();ctx.moveTo(300,400);ctx.lineTo(gx,gy);ctx.strokeStyle="rgba(148,163,184,.34)";ctx.lineWidth=4;ctx.stroke();
+        ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.fillStyle="#e5e7eb";ctx.fill();ctx.strokeStyle="#94a3b8";ctx.lineWidth=4;ctx.stroke();
+        ctx.beginPath();ctx.arc(ball.x-ball.r*.28,ball.y-ball.r*.32,ball.r*.16,0,Math.PI*2);ctx.fillStyle="rgba(255,255,255,.75)";ctx.fill();
+      }
       function frame(now){const dt=clamp((now-lastTime)/1000,0,.033);lastTime=now;update(dt);draw();requestAnimationFrame(frame);}
       const keyState=new Set();function updateKeys(){manualX=(keyState.has("ArrowRight")||keyState.has("KeyD")?1:0)-(keyState.has("ArrowLeft")||keyState.has("KeyA")?1:0);manualY=(keyState.has("ArrowDown")||keyState.has("KeyS")?1:0)-(keyState.has("ArrowUp")||keyState.has("KeyW")?1:0);}
       window.addEventListener("keydown",e=>{keyState.add(e.code);updateKeys();});window.addEventListener("keyup",e=>{keyState.delete(e.code);updateKeys();});window.addEventListener("blur",()=>{keyState.clear();manualX=manualY=0;});
       document.querySelectorAll(".dpad button").forEach(btn=>{const x=Number(btn.dataset.x||0),y=Number(btn.dataset.y||0);const press=e=>{e.preventDefault();manualX=x;manualY=y;},release=e=>{e.preventDefault();manualX=0;manualY=0;};btn.addEventListener("pointerdown",press);btn.addEventListener("pointerup",release);btn.addEventListener("pointercancel",release);btn.addEventListener("pointerleave",release);});
-      startBtn.addEventListener("click",requestSensor);calibrateBtn.addEventListener("click",calibrate);resetBtn.addEventListener("click",resetBall);window.addEventListener("orientationchange",()=>setTimeout(()=>{screenAngleEl.textContent=`${screenAngle()}°`;},100));
-      screenAngleEl.textContent=`${screenAngle()}°`;resetBall();requestAnimationFrame(frame);
+      startBtn.addEventListener("click",requestSensor);calibrateBtn.addEventListener("click",calibrate);resetBtn.addEventListener("click",resetBall);
+      window.addEventListener("orientationchange",()=>setTimeout(updateDebug,100));
+      refreshApiInfo();updateDebug();resetBall();requestAnimationFrame(frame);
     })();
   </script>
 </body>
