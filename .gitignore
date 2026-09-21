@@ -1,0 +1,38 @@
+# Environment files / local secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+.envrc
+
+# Credentials and private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+credentials*.json
+*service-account*.json
+secrets/
+
+# Package / tool credentials
+.npmrc
+.pypirc
+.netrc
+
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+*.temp
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
