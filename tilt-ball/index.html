@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#111827" />
+  <title>Tilt Ball Prototype v0.1</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#0b1020; color:#eef2ff; }
+    * { box-sizing:border-box; }
+    html,body { margin:0; min-height:100%; background:#0b1020; overscroll-behavior:none; }
+    body { padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom)); }
+    .wrap { width:min(100%,720px); margin:0 auto; }
+    .top { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+    .title { font-size:16px; font-weight:700; }
+    .status { font-size:12px; color:#b9c3db; }
+    .buttons { display:flex; gap:8px; flex-wrap:wrap; }
+    button { appearance:none; border:1px solid #48536e; border-radius:10px; background:#202a44; color:white; min-height:44px; padding:0 14px; font:inherit; font-weight:650; touch-action:manipulation; }
+    button.primary { background:#4158d0; border-color:#6679e8; }
+    button:disabled { opacity:.5; }
+    .stage-shell { position:relative; border:1px solid #303b58; border-radius:18px; overflow:hidden; background:#11182a; }
+    canvas { display:block; width:100%; aspect-ratio:3 / 4; touch-action:none; }
+    .overlay { position:absolute; left:12px; right:12px; bottom:12px; padding:9px 10px; border-radius:10px; background:rgba(4,8,18,.72); color:#cbd5e1; font-size:12px; line-height:1.45; pointer-events:none; backdrop-filter:blur(5px); }
+    .debug { margin-top:10px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+    .card { border:1px solid #303b58; border-radius:12px; padding:10px; background:#11182a; min-width:0; }
+    .k { font-size:11px; color:#8fa0be; }
+    .v { font-variant-numeric:tabular-nums; font-size:14px; margin-top:3px; overflow-wrap:anywhere; }
+    .fallback { margin-top:10px; }
+    .dpad { display:grid; grid-template-columns:repeat(3,52px); grid-template-rows:repeat(3,52px); gap:5px; justify-content:center; user-select:none; }
+    .dpad button { padding:0; font-size:20px; }
+    .dpad .up { grid-column:2; grid-row:1; }
+    .dpad .left { grid-column:1; grid-row:2; }
+    .dpad .down { grid-column:2; grid-row:3; }
+    .dpad .right { grid-column:3; grid-row:2; }
+    .note { font-size:12px; color:#94a3b8; line-height:1.55; margin-top:10px; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="top">
+      <div><div class="title">Tilt Ball Prototype v0.1</div><div id="status" class="status">センサー待機中</div></div>
+      <div class="buttons">
+        <button id="start" class="primary" type="button">傾き操作を開始</button>
+        <button id="calibrate" type="button" disabled>ここを水平にする</button>
+        <button id="reset" type="button">中央へ戻す</button>
+      </div>
+    </div>
+    <section class="stage-shell" aria-label="傾き操作テストエリア">
+      <canvas id="game" width="600" height="800"></canvas>
+      <div class="overlay">スマホを左右・前後に傾けて丸を転がします。最初に持ちやすい角度で「ここを水平にする」を押すと、その角度がニュートラルになります。</div>
+    </section>
+    <section class="debug" aria-label="デバッグ情報">
+      <div class="card"><div class="k">beta / gamma</div><div class="v" id="angles">-- / --</div></div>
+      <div class="card"><div class="k">入力 X / Y</div><div class="v" id="input">0.00 / 0.00</div></div>
+      <div class="card"><div class="k">速度 X / Y</div><div class="v" id="velocity">0 / 0</div></div>
+      <div class="card"><div class="k">画面向き</div><div class="v" id="screenAngle">0°</div></div>
+    </section>
+    <section class="fallback card">
+      <div class="k">センサーが使えない時の動作確認</div>
+      <div class="dpad" aria-label="代替方向キー">
+        <button class="up" data-x="0" data-y="-1" type="button" aria-label="上">▲</button>
+        <button class="left" data-x="-1" data-y="0" type="button" aria-label="左">◀</button>
+        <button class="right" data-x="1" data-y="0" type="button" aria-label="右">▶</button>
+        <button class="down" data-x="0" data-y="1" type="button" aria-label="下">▼</button>
+      </div>
+      <div class="note">PCでは矢印キー / WASD でも動きます。実機の傾き取得はブラウザ仕様上 HTTPS が必要です。</div>
+    </section>
+  </main>
+  <script>
+    (() => {
+      "use strict";
+      const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
+      const statusEl=document.getElementById("status"),anglesEl=document.getElementById("angles"),inputEl=document.getElementById("input"),velocityEl=document.getElementById("velocity"),screenAngleEl=document.getElementById("screenAngle");
+      const startBtn=document.getElementById("start"),calibrateBtn=document.getElementById("calibrate"),resetBtn=document.getElementById("reset");
+      const world={w:600,h:800,pad:26},ball={x:300,y:400,vx:0,vy:0,r:25};
+      let sensorActive=false,sensorReceived=false,beta=0,gamma=0,baseBeta=0,baseGamma=0,sensorX=0,sensorY=0,manualX=0,manualY=0,lastTime=performance.now();
+      const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+      const screenAngle=()=>{const a=screen.orientation&&typeof screen.orientation.angle==="number"?screen.orientation.angle:(typeof window.orientation==="number"?window.orientation:0);return((a%360)+360)%360;};
+      function transformTilt(rawGamma,rawBeta){const angle=screenAngle();let x=rawGamma-baseGamma,y=rawBeta-baseBeta;if(angle===90)[x,y]=[y,-x];else if(angle===270)[x,y]=[-y,x];else if(angle===180)[x,y]=[-x,-y];return{x:clamp(x/28,-1,1),y:clamp(y/28,-1,1)};}
+      function onOrientation(e){if(typeof e.beta!=="number"||typeof e.gamma!=="number")return;beta=e.beta;gamma=e.gamma;sensorReceived=true;const t=transformTilt(gamma,beta);sensorX=t.x;sensorY=t.y;anglesEl.textContent=`${beta.toFixed(1)}° / ${gamma.toFixed(1)}°`;screenAngleEl.textContent=`${screenAngle()}°`;statusEl.textContent="傾きセンサー取得中";}
+      async function requestSensor(){startBtn.disabled=true;statusEl.textContent="センサー権限を確認中…";try{if(!window.isSecureContext)throw new Error("このページはHTTPSではありません。傾きセンサーはHTTPS上で開いてください。");if(!("DeviceOrientationEvent" in window))throw new Error("このブラウザでは端末傾きAPIを利用できません。");if(typeof DeviceOrientationEvent.requestPermission==="function"){const result=await DeviceOrientationEvent.requestPermission();if(result!=="granted")throw new Error("傾きセンサーの利用が許可されませんでした。");}window.addEventListener("deviceorientation",onOrientation,true);sensorActive=true;calibrateBtn.disabled=false;startBtn.textContent="傾き操作 ON";statusEl.textContent="スマホを傾けてください";setTimeout(()=>{if(sensorActive&&!sensorReceived)statusEl.textContent="権限は取得しましたが、センサーデータが届いていません";},1500);}catch(err){statusEl.textContent=err&&err.message?err.message:"センサーを開始できませんでした";startBtn.disabled=false;startBtn.textContent="もう一度試す";}}
+      function calibrate(){baseBeta=beta;baseGamma=gamma;sensorX=0;sensorY=0;statusEl.textContent=`ニュートラル設定: beta ${baseBeta.toFixed(1)}° / gamma ${baseGamma.toFixed(1)}°`;}
+      function resetBall(){ball.x=300;ball.y=400;ball.vx=0;ball.vy=0;}
+      function update(dt){const ix=clamp(sensorX+manualX,-1,1),iy=clamp(sensorY+manualY,-1,1),accel=850,drag=Math.pow(.14,dt);ball.vx+=ix*accel*dt;ball.vy+=iy*accel*dt;ball.vx*=drag;ball.vy*=drag;const maxSpeed=650,speed=Math.hypot(ball.vx,ball.vy);if(speed>maxSpeed){const s=maxSpeed/speed;ball.vx*=s;ball.vy*=s;}ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;const minX=world.pad+ball.r,maxX=world.w-world.pad-ball.r,minY=world.pad+ball.r,maxY=world.h-world.pad-ball.r,bounce=.42;if(ball.x<minX){ball.x=minX;if(ball.vx<0)ball.vx*=-bounce;}if(ball.x>maxX){ball.x=maxX;if(ball.vx>0)ball.vx*=-bounce;}if(ball.y<minY){ball.y=minY;if(ball.vy<0)ball.vy*=-bounce;}if(ball.y>maxY){ball.y=maxY;if(ball.vy>0)ball.vy*=-bounce;}inputEl.textContent=`${ix.toFixed(2)} / ${iy.toFixed(2)}`;velocityEl.textContent=`${ball.vx.toFixed(0)} / ${ball.vy.toFixed(0)}`;}
+      function draw(){ctx.clearRect(0,0,600,800);ctx.fillStyle="#11182a";ctx.fillRect(0,0,600,800);ctx.strokeStyle="#60708f";ctx.lineWidth=5;ctx.strokeRect(world.pad,world.pad,world.w-world.pad*2,world.h-world.pad*2);const gx=300+(sensorX+manualX)*90,gy=400+(sensorY+manualY)*90;ctx.beginPath();ctx.moveTo(300,400);ctx.lineTo(gx,gy);ctx.strokeStyle="rgba(148,163,184,.34)";ctx.lineWidth=4;ctx.stroke();ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.fillStyle="#e5e7eb";ctx.fill();ctx.strokeStyle="#94a3b8";ctx.lineWidth=4;ctx.stroke();ctx.beginPath();ctx.arc(ball.x-ball.r*.28,ball.y-ball.r*.32,ball.r*.16,0,Math.PI*2);ctx.fillStyle="rgba(255,255,255,.75)";ctx.fill();}
+      function frame(now){const dt=clamp((now-lastTime)/1000,0,.033);lastTime=now;update(dt);draw();requestAnimationFrame(frame);}
+      const keyState=new Set();function updateKeys(){manualX=(keyState.has("ArrowRight")||keyState.has("KeyD")?1:0)-(keyState.has("ArrowLeft")||keyState.has("KeyA")?1:0);manualY=(keyState.has("ArrowDown")||keyState.has("KeyS")?1:0)-(keyState.has("ArrowUp")||keyState.has("KeyW")?1:0);}
+      window.addEventListener("keydown",e=>{keyState.add(e.code);updateKeys();});window.addEventListener("keyup",e=>{keyState.delete(e.code);updateKeys();});window.addEventListener("blur",()=>{keyState.clear();manualX=manualY=0;});
+      document.querySelectorAll(".dpad button").forEach(btn=>{const x=Number(btn.dataset.x||0),y=Number(btn.dataset.y||0);const press=e=>{e.preventDefault();manualX=x;manualY=y;},release=e=>{e.preventDefault();manualX=0;manualY=0;};btn.addEventListener("pointerdown",press);btn.addEventListener("pointerup",release);btn.addEventListener("pointercancel",release);btn.addEventListener("pointerleave",release);});
+      startBtn.addEventListener("click",requestSensor);calibrateBtn.addEventListener("click",calibrate);resetBtn.addEventListener("click",resetBall);window.addEventListener("orientationchange",()=>setTimeout(()=>{screenAngleEl.textContent=`${screenAngle()}°`;},100));
+      screenAngleEl.textContent=`${screenAngle()}°`;resetBall();requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
