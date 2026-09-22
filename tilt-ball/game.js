@@ -236,6 +236,17 @@ function spawnHazard(){
   if(!currentEdge)return;
   var e=currentEdge,risk=e.risk,primary=primaryPatternFor(e);
 
+  // 混成海域は★2でも最低2種。★3は3種、★4は全部盛り。
+  if(e.hazard==='混在'){
+    var pool=['rock','cannon','pirate','king'];
+    for(var i=pool.length-1;i>0;i--){
+      var j=Math.floor(Math.random()*(i+1)),tmp=pool[i];pool[i]=pool[j];pool[j]=tmp;
+    }
+    var mixCount=risk>=4?4:(risk>=3?3:2);
+    pool.slice(0,mixCount).forEach(function(t){spawnPattern(t,e);});
+    return;
+  }
+
   // ★1: 主危険だけ。岩礁/海流は地形自体が主危険なので追加弾幕なし。
   if(risk<=1){
     if(primary&&e.hazard!=='岩礁')spawnPattern(primary,e);
