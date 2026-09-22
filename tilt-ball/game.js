@@ -16,6 +16,27 @@ function fmt(m){m=Math.max(0,Math.ceil(m));var h=Math.floor(m/60),mm=m%60;return
 function key(e){return e.from+'-'+e.to;}
 function outgoing(n){return D.edges.filter(function(e){return e.from===n;});}
 function riskStars(n){return '★'.repeat(n)+'☆'.repeat(4-n);}
+function countPaths(node,seen){
+  if(node===D.goal)return 1;
+  seen=seen||{};
+  if(seen[node])return 0;
+  var next=Object.assign({},seen);next[node]=true;
+  return outgoing(node).reduce(function(sum,e){return sum+countPaths(e.to,next);},0);
+}
+var TOTAL_ROUTES=countPaths(D.start,{});
+function loadRecords(){
+  try{
+    var r=JSON.parse(localStorage.getItem('buggy-return-records-v1')||'{}');
+    return {attempts:r.attempts||0,successes:r.successes||0,bestRemaining:Number.isFinite(r.bestRemaining)?r.bestRemaining:null,minDamage:Number.isFinite(r.minDamage)?r.minDamage:null,routes:r.routes||{}};
+  }catch(e){return {attempts:0,successes:0,bestRemaining:null,minDamage:null,routes:{}};}
+}
+function saveRecords(r){try{localStorage.setItem('buggy-return-records-v1',JSON.stringify(r));}catch(e){}}
+function routeSignature(){return visitedNodes.join('>');}
+function updateRecordSummary(){
+  var el=document.getElementById('recordSummary');if(!el)return;
+  var r=loadRecords(),unique=Object.keys(r.routes).length;
+  el.innerHTML='<b>航海記録</b>　成功 '+r.successes+' / 挑戦 '+r.attempts+'　｜　走破ルート '+unique+' / '+TOTAL_ROUTES+(r.bestRemaining!==null?'　｜　BEST残り '+fmt(r.bestRemaining):'');
+}
 function screenAngle(){var a=screen.orientation&&typeof screen.orientation.angle==='number'?screen.orientation.angle:(typeof window.orientation==='number'?window.orientation:0);return((a%360)+360)%360;}
 function rotate(x,y){var a=screenAngle();if(a===90)return{x:y,y:-x};if(a===270)return{x:-y,y:x};if(a===180)return{x:-x,y:-y};return{x:x,y:y};}
 function onOrientation(e){
@@ -79,7 +100,7 @@ function resetGame(){
   player.x=300;player.y=730;player.vx=player.vy=0;input.x=input.y=manual.x=manual.y=0;
   gameMinutes=D.initialMinutes;damage=0;invuln=0;currentNode=D.start;currentEdge=null;edgeProgress=0;nextHazard=0;hazards=[];
   fork=null;forkY=-180;forkDelay=.4;visitedNodes=[D.start];visitedEdges=[];banner.textContent='まずは最初の航路を選べ！';
-  updateHud();buildMap('planningMap',false);buildMap('liveMapBody',true);
+  updateHud();updateRecordSummary();buildMap('planningMap',false);buildMap('liveMapBody',true);
 }
 function startGame(){
   resetGame();planning.classList.add('hidden');end.classList.add('hidden');liveMap.classList.add('hidden');running=true;last=performance.now();enableSensor();prepareFork();
@@ -146,8 +167,20 @@ function hit(h){
 }
 function finish(ok){
   running=false;liveMap.classList.add('hidden');end.classList.remove('hidden');
+  var records=loadRecords(),sig=routeSignature(),wasNew=false;
+  records.attempts++;
+  if(ok){
+    records.successes++;
+    if(!records.routes[sig]){records.routes[sig]=1;wasNew=true;}else records.routes[sig]++;
+    if(records.bestRemaining===null||gameMinutes>records.bestRemaining)records.bestRemaining=gameMinutes;
+    if(records.minDamage===null||damage<records.minDamage)records.minDamage=damage;
+  }
+  saveRecords(records);
   endTitle.textContent=ok?'帰還成功！':'……バギー。';
   endText.innerHTML=ok?'残り <b>'+fmt(gameMinutes)+'</b> でカライ・バリ島へ帰還。<br>被害 '+damage+'回 / 経由 '+visitedNodes.join(' → '):'時間切れ。<br>経由 '+visitedNodes.join(' → ')+'<br>嫌な予感しかしない。';
+  var unique=Object.keys(records.routes).length,rt=document.getElementById('recordText');
+  if(rt)rt.innerHTML='<b>'+((ok&&wasNew)?'新航路走破！':'航海記録')+'</b>　走破ルート '+unique+' / '+TOTAL_ROUTES+(records.bestRemaining!==null?'　｜　BEST残り '+fmt(records.bestRemaining):'')+(records.minDamage!==null?'　｜　最少被害 '+records.minDamage:'');
+  updateRecordSummary();
 }
 function update(dt){
   if(!running)return;
