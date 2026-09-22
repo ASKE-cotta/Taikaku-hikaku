@@ -1,5 +1,5 @@
 window.ROUTE_DATA = {
-  version: "0.6",
+  version: "0.7",
   start: "S",
   goal: "K",
   initialMinutes: 240,
@@ -16,13 +16,13 @@ window.ROUTE_DATA = {
     S: { name: "やらかし地点", log: 0, x: 300, y: 535 },
     A: { name: "A島", log: 12, x: 105, y: 420 },
     B: { name: "B島", log: 28, x: 300, y: 420 },
-    C: { name: "C島", log: 48, x: 495, y: 420 },
+    C: { name: "C島", log: 42, x: 495, y: 420 },
     D: { name: "D島", log: 10, x: 55, y: 295 },
     E: { name: "E島", log: 24, x: 215, y: 295 },
-    F: { name: "F島", log: 38, x: 385, y: 295 },
+    F: { name: "F島", log: 32, x: 385, y: 295 },
     G: { name: "G島", log: 15, x: 545, y: 295 },
     H: { name: "H島", log: 16, x: 210, y: 165 },
-    I: { name: "I島", log: 30, x: 410, y: 165 },
+    I: { name: "I島", log: 24, x: 410, y: 165 },
     K: { name: "カライ・バリ島", log: 0, x: 300, y: 45 }
   },
   edges: [
@@ -33,7 +33,7 @@ window.ROUTE_DATA = {
     { from:"A", to:"E", sail:40, risk:2, hazard:"岩礁" },
     { from:"B", to:"E", sail:30, risk:2, hazard:"海賊" },
     { from:"B", to:"F", sail:27, risk:3, hazard:"海王類" },
-    { from:"C", to:"F", sail:24, risk:1, hazard:"岩礁" },
+    { from:"C", to:"F", sail:22, risk:1, hazard:"岩礁" },
     { from:"C", to:"G", sail:20, risk:4, hazard:"海王類" },
     { from:"D", to:"H", sail:34, risk:4, hazard:"海軍" },
     { from:"E", to:"H", sail:28, risk:2, hazard:"岩礁" },
