@@ -1,5 +1,5 @@
 window.ROUTE_DATA = {
-  version: "0.7",
+  version: "0.8",
   start: "S",
   goal: "K",
   initialMinutes: 240,
