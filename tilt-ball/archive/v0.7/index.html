@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#071827">
+<title>バギー帰還パニック v0.7</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#06131f;color:#fff}*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#06131f;overscroll-behavior:none}body{padding:max(7px,env(safe-area-inset-top)) 7px max(9px,env(safe-area-inset-bottom))}
+.wrap{width:min(100%,680px);margin:auto}.hud{display:grid;grid-template-columns:1.15fr 1fr 1.35fr .55fr;gap:5px;margin-bottom:6px}.panel{background:#0d2234;border:1px solid #24425b;border-radius:9px;padding:6px 7px;min-width:0}
+.k{font-size:9px;color:#8fa9bd}.v{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stage{position:relative;border:1px solid #31516b;border-radius:15px;overflow:hidden;background:#0b4d67}
+canvas{display:block;width:100%;aspect-ratio:2/3;touch-action:none}.banner{position:absolute;left:9px;right:9px;top:9px;padding:7px 9px;border-radius:9px;background:rgba(3,12,22,.78);backdrop-filter:blur(5px);font-size:11px;line-height:1.4;pointer-events:none}
+.flash{position:absolute;inset:0;pointer-events:none;opacity:0;background:#fff;z-index:4}.controls{display:flex;justify-content:space-between;gap:7px;margin-top:6px;align-items:center}
+button{min-height:40px;border-radius:9px;border:1px solid #45637c;background:#17344a;color:#fff;padding:0 11px;font-weight:750}button.primary{background:#d94657;border-color:#ff6b78}
+.meta{font-size:10px;color:#9db2c2;line-height:1.4;flex:1}.dpad{display:grid;grid-template-columns:repeat(3,39px);grid-template-rows:repeat(3,39px);gap:2px}.dpad button{padding:0}.up{grid-column:2}.left{grid-column:1;grid-row:2}.right{grid-column:3;grid-row:2}.down{grid-column:2;grid-row:3}
+.modal{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;background:rgba(1,7,13,.94);z-index:8;padding:12px;overflow:auto}.modal.hidden{display:none}.card{width:min(100%,600px);background:#0c1e2d;border:1px solid #31516b;border-radius:14px;padding:13px}
+.modal.live-map{background:rgba(1,7,13,.38);padding:8px}.modal.live-map .card{width:min(94%,580px);background:rgba(12,30,45,.70);backdrop-filter:blur(1.5px);border-color:rgba(112,157,187,.7)}.modal.live-map .routeSvg{background:rgba(7,24,36,.64)}.modal.live-map .edgeRow{background:rgba(16,40,58,.72)}
+.card h1{font-size:19px;margin:0 0 5px}.card p{font-size:11px;line-height:1.55;color:#cbd8e2;margin:5px 0}.card .primary{width:100%;margin-top:8px}.mapTop{display:flex;justify-content:space-between;gap:8px;font-size:11px;margin:7px 0;align-items:center}
+.mapTop span{color:#f3c66c}.routeSvg{width:100%;height:auto;background:#071824;border:1px solid #29455b;border-radius:12px}.mapEdge{stroke:#5d7181;stroke-width:5;opacity:.7}.mapEdge.visited{stroke:#46b981}.mapEdge.current{stroke:#f1c75b;stroke-width:8}.edgeLabel{fill:#d4dee5;font-size:10px;paint-order:stroke;stroke:#071824;stroke-width:3px;stroke-linejoin:round}.mapNode circle{fill:#17384e;stroke:#6d879a;stroke-width:2}.mapNode.visited circle{fill:#225d4b}.mapNode.current circle{fill:#b8872e;stroke:#ffdb75;stroke-width:4}.mapNode.goal circle{fill:#812f40}.mapNode text{fill:#fff;font-size:12px;font-weight:800}.mapNode .nodeSub{font-size:9px;font-weight:500;fill:#d4dee5}.mapLegend{font-size:10px;color:#9db2c2;margin:6px 0}.edgeTable{display:grid;grid-template-columns:1fr 1fr;gap:3px}.edgeRow{display:grid;grid-template-columns:.8fr .7fr .8fr 1.5fr;gap:4px;background:#10283a;border-radius:6px;padding:4px 5px;font-size:9px;align-items:center}
+.mapActions{position:sticky;bottom:0;background:rgba(12,30,45,.88);padding-top:7px}.mapActions button{width:100%}.warning{font-size:11px;color:#ffca69;font-weight:800}.small{font-size:9px;color:#8fa9bd}.hazardLegend{font-size:9px;line-height:1.55;color:#c3d2dc;background:rgba(13,34,52,.7);border-radius:7px;padding:5px 7px;margin:5px 0}.hazardLegend b{color:#fff}.recordBox{margin:7px 0;padding:7px 9px;border:1px solid #31516b;border-radius:9px;background:rgba(7,24,36,.68);font-size:10px;line-height:1.55;color:#cbd8e2}.recordBox b{color:#fff}
+@media(max-width:480px){.edgeTable{grid-template-columns:1fr}.hud{grid-template-columns:1.1fr 1fr 1.2fr .5fr}.v{font-size:11px}.card{padding:10px}.routeSvg{max-height:46vh}}
+</style>
+</head>
+<body>
+<main class="wrap">
+<section class="hud">
+<div class="panel"><div class="k">残り</div><div id="time" class="v">04:00</div></div>
+<div class="panel"><div class="k">現在地</div><div id="place" class="v">出航前</div></div>
+<div class="panel"><div class="k">航路</div><div id="routeNow" class="v">待機</div></div>
+<div class="panel"><div class="k">被害</div><div id="damage" class="v">0</div></div>
+</section>
+<section class="stage">
+<canvas id="game" width="600" height="900"></canvas><div id="banner" class="banner">出航前に海図を覚えろ！</div><div id="flash" class="flash"></div>
+
+<div id="planning" class="modal"><div class="card">
+<h1>バギー帰還パニック <small>v0.7</small></h1>
+<p>クロコダイルとミホークにバレる前にカライ・バリ島へ帰れ。<b>ここだけは時間が止まっている。</b> ログ時間・航行時間・危険度を見て、先に作戦を立てよう。</p>
+<div id="recordSummary" class="recordBox"></div>
+<div id="planningMap"></div>
+<button id="start" class="primary">覚えた！ 出航する</button>
+<div class="small">Android Chrome推奨。出航後に海図を開いてもゲームは停止しません。</div>
+</div></div>
+
+<div id="liveMap" class="modal live-map hidden"><div class="card">
+<div class="warning">⚠ 航行継続中。海図を見ている間も船・敵・残り時間は止まりません。</div>
+<div id="liveMapBody"></div>
+<div class="mapActions"><button id="closeMap" class="primary">海図を閉じて航海へ戻る</button></div>
+</div></div>
+
+<div id="end" class="modal hidden"><div class="card"><h1 id="endTitle">RESULT</h1><p id="endText"></p><div id="recordText" class="recordBox"></div><button id="retry" class="primary">海図からやり直す</button></div></div>
+</section>
+<section class="controls">
+<div class="meta"><b id="sensor">センサー未開始</b><br>海図確認は右の「海図」。開いてもポーズしません。</div>
+<button id="mapBtn">海図</button>
+<div class="dpad"><button class="up" data-x="0" data-y="-1">▲</button><button class="left" data-x="-1" data-y="0">◀</button><button class="right" data-x="1" data-y="0">▶</button><button class="down" data-x="0" data-y="1">▼</button></div>
+</section>
+</main>
+<script src="route-data.js?v=7"></script>
+<script src="game.js?v=7"></script>
+</body>
+</html>
