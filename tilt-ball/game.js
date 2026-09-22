@@ -190,33 +190,58 @@ function spawnRockGate(e){
     }
   });
 }
+function spawnCannonShot(e,offset,delay){
+  var risk=e.risk,tx=clamp(player.x+offset+(Math.random()*54-27),45,555),ty=clamp(player.y+(Math.random()*150-75),285,825);
+  hazards.push({type:'cannon',state:'warning',risk:risk,targetX:tx,targetY:ty,x:tx,y:ty,r:11,timer:Math.max(.30,.92-risk*.10)+(delay||0),pen:hazardPenalty('cannon',risk)});
+}
 function spawnCannon(e){
-  var risk=e.risk,tx=clamp(player.x+(Math.random()*80-40),50,550),ty=clamp(player.y+(Math.random()*100-50),300,820);
-  hazards.push({type:'cannon',state:'warning',risk:risk,targetX:tx,targetY:ty,x:tx,y:ty,r:11,timer:Math.max(.38,1.05-risk*.13),pen:hazardPenalty('cannon',risk)});
+  var risk=e.risk,count=risk>=4?4:(risk>=3?3:2),spacing=115;
+  for(var i=0;i<count;i++){
+    var centered=i-(count-1)/2;
+    spawnCannonShot(e,centered*spacing,i*.07);
+  }
 }
 function spawnPirate(e){
-  var risk=e.risk;
-  hazards.push({type:'pirate',state:'active',risk:risk,x:70+Math.random()*460,y:-60,r:28,vy:45+risk*10,seek:48+risk*22,pen:hazardPenalty('pirate',risk)});
+  var risk=e.risk,count=risk>=4?3:(risk>=3?2:1);
+  for(var i=0;i<count;i++){
+    var lane=(i+1)/(count+1);
+    hazards.push({type:'pirate',state:'active',risk:risk,x:70+lane*460+(Math.random()*70-35),y:-70-i*60,r:28,vy:55+risk*12,seek:58+risk*26,pen:hazardPenalty('pirate',risk)});
+  }
 }
 function spawnKing(e){
-  var risk=e.risk,side=Math.random()<.5?-1:1,y=330+Math.random()*420;
-  hazards.push({type:'king',state:'warning',risk:risk,side:side,x:side<0?-58:658,y:y,r:37,timer:Math.max(.42,1.15-risk*.14),vx:0,pen:hazardPenalty('king',risk)});
+  var risk=e.risk,count=risk>=3?2:1,firstSide=Math.random()<.5?-1:1;
+  for(var i=0;i<count;i++){
+    var side=i===0?firstSide:-firstSide,y=300+Math.random()*470;
+    hazards.push({type:'king',state:'warning',risk:risk,side:side,x:side<0?-58:658,y:y,r:37,timer:Math.max(.36,1.02-risk*.11)+i*.24,vx:0,pen:hazardPenalty('king',risk)});
+  }
+}
+function spawnPattern(type,e){
+  if(type==='rock')spawnRockGate(e);
+  else if(type==='cannon')spawnCannon(e);
+  else if(type==='pirate')spawnPirate(e);
+  else if(type==='king')spawnKing(e);
 }
 function spawnHazard(){
   if(!currentEdge)return;
+  if(currentEdge.hazard==='混在'){
+    var pool=['cannon','pirate','king'],first=pool[Math.floor(Math.random()*pool.length)];
+    spawnPattern(first,currentEdge);
+    if(Math.random()<.72){
+      var rest=pool.filter(function(x){return x!==first;});
+      spawnPattern(rest[Math.floor(Math.random()*rest.length)],currentEdge);
+    }
+    return;
+  }
   var t=pickHazard(currentEdge);
   if(!t)return;
-  if(t==='rock')spawnRockGate(currentEdge);
-  else if(t==='cannon')spawnCannon(currentEdge);
-  else if(t==='pirate')spawnPirate(currentEdge);
-  else spawnKing(currentEdge);
+  spawnPattern(t,currentEdge);
 }
 function nextSpawnDistance(e){
   if(e.hazard==='岩礁'||e.hazard==='海流')return 99999;
-  if(e.hazard==='海軍')return 300-e.risk*30+Math.random()*110;
-  if(e.hazard==='海賊')return 335-e.risk*30+Math.random()*120;
-  if(e.hazard==='海王類')return 390-e.risk*34+Math.random()*130;
-  return 315-e.risk*25+Math.random()*110;
+  if(e.hazard==='海軍')return 215-e.risk*16+Math.random()*72;
+  if(e.hazard==='海賊')return 245-e.risk*18+Math.random()*88;
+  if(e.hazard==='海王類')return 285-e.risk*22+Math.random()*105;
+  return 220-e.risk*16+Math.random()*78;
 }
 
 function reefCenterAt(screenY){
