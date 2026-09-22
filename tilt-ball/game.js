@@ -9,7 +9,7 @@ var endTitle=document.getElementById('endTitle'),endText=document.getElementById
 var player={x:300,y:730,vx:0,vy:0,r:20},input={x:0,y:0},manual={x:0,y:0};
 var baseB=null,baseG=null,baseMX=null,baseMY=null,lastOri=0,lastMotion=0,sensorListenersAdded=false;
 var running=false,last=performance.now(),gameMinutes=D.initialMinutes,damage=0,invuln=0;
-var currentNode=D.start,currentEdge=null,edgeProgress=0,nextHazard=0,hazards=[];
+var currentNode=D.start,currentEdge=null,edgeProgress=0,nextHazard=0,hazards=[],flowDir=1,terrainHitCooldown=0;
 var fork=null,forkY=-180,forkDelay=0,visitedNodes=[D.start],visitedEdges=[];
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function fmt(m){m=Math.max(0,Math.ceil(m));var h=Math.floor(m/60),mm=m%60;return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0');}
@@ -117,7 +117,7 @@ function buildMap(targetId,live){
   }
   svg.push('</svg>');
   var rows=D.edges.map(function(e){return '<div class="edgeRow"><b>'+e.from+'→'+e.to+'</b><span>'+e.sail+'分</span><span>'+meta(e.hazard).short+'</span><span>'+riskStars(e.risk)+'</span></div>';}).join('');
-  var legend='<div class="hazardLegend"><b>避け方</b>　海軍＝予告砲撃　／　岩礁＝狭路　／　海賊＝追尾船　／　海王類＝横断突進</div>';
+  var legend='<div class="hazardLegend"><b>避け方</b>　海軍＝予告砲撃　／　岩礁＝蛇行水道　／　海流＝逆舵維持　／　海賊＝追尾船　／　海王類＝横断突進</div>';
   var detail=live
     ? '<div id="liveRouteInfo" class="liveRouteStrip"></div>'+legend
     : '<div class="mapLegend">島の数字＝ログ記録時間 / 線の数字＝航行時間 / ★＝危険度</div>'+legend+'<div class="edgeTable">'+rows+'</div>';
@@ -127,7 +127,7 @@ function buildMap(targetId,live){
 function resetGame(){
   player.x=300;player.y=730;player.vx=player.vy=0;input.x=input.y=manual.x=manual.y=0;
   baseB=baseG=baseMX=baseMY=null;lastOri=lastMotion=0;
-  gameMinutes=D.initialMinutes;damage=0;invuln=0;currentNode=D.start;currentEdge=null;edgeProgress=0;nextHazard=0;hazards=[];
+  gameMinutes=D.initialMinutes;damage=0;invuln=0;currentNode=D.start;currentEdge=null;edgeProgress=0;nextHazard=0;hazards=[];flowDir=1;terrainHitCooldown=0;
   fork=null;forkY=-180;forkDelay=.4;visitedNodes=[D.start];visitedEdges=[];banner.textContent='まずは最初の航路を選べ！';
   updateHud();updateRecordSummary();buildMap('planningMap',false);buildMap('liveMapBody',true);
 }
@@ -149,8 +149,12 @@ function resolveFork(){
   var e=fork.edges[best];fork=null;beginEdge(e);
 }
 function beginEdge(e){
-  currentEdge=e;edgeProgress=0;nextHazard=220;hazards=[];visitedEdges.push(key(e));
-  banner.textContent=e.to+'へ！ '+meta(e.hazard).short+' '+riskStars(e.risk)+' — '+meta(e.hazard).cue;
+  currentEdge=e;edgeProgress=0;nextHazard=220;hazards=[];terrainHitCooldown=0;visitedEdges.push(key(e));
+  if(e.hazard==='海流'){
+    var seed=(e.from.charCodeAt(0)+e.to.charCodeAt(0)+e.risk)%2;
+    flowDir=seed===0?-1:1;
+  }
+  banner.textContent=e.to+'へ！ '+meta(e.hazard).short+' '+riskStars(e.risk)+' — '+meta(e.hazard).cue+(e.hazard==='海流'?(flowDir<0?'（←へ流される）':'（→へ流される）'):'');
   updateHud();buildMap('liveMapBody',true);
 }
 function arrive(){
@@ -170,7 +174,7 @@ function hazardPenalty(type,risk){
   return 15+risk*4;
 }
 function pickHazard(e){
-  if(e.hazard==='岩礁')return'rock';
+  if(e.hazard==='岩礁'||e.hazard==='海流')return null;
   if(e.hazard==='海軍')return'cannon';
   if(e.hazard==='海賊')return'pirate';
   if(e.hazard==='海王類')return'king';
@@ -201,17 +205,86 @@ function spawnKing(e){
 function spawnHazard(){
   if(!currentEdge)return;
   var t=pickHazard(currentEdge);
+  if(!t)return;
   if(t==='rock')spawnRockGate(currentEdge);
   else if(t==='cannon')spawnCannon(currentEdge);
   else if(t==='pirate')spawnPirate(currentEdge);
   else spawnKing(currentEdge);
 }
 function nextSpawnDistance(e){
-  if(e.hazard==='岩礁')return 380-e.risk*28+Math.random()*110;
+  if(e.hazard==='岩礁'||e.hazard==='海流')return 99999;
   if(e.hazard==='海軍')return 300-e.risk*30+Math.random()*110;
   if(e.hazard==='海賊')return 335-e.risk*30+Math.random()*120;
   if(e.hazard==='海王類')return 390-e.risk*34+Math.random()*130;
   return 315-e.risk*25+Math.random()*110;
+}
+
+function reefCenterAt(screenY){
+  if(!currentEdge)return 300;
+  var phase=edgeProgress*.105+(H-screenY)*.0105;
+  var amp=105+currentEdge.risk*20;
+  return 300+Math.sin(phase)*amp+Math.sin(phase*.47+1.3)*32;
+}
+function reefHalfWidth(){
+  if(!currentEdge)return 220;
+  return Math.max(78,145-currentEdge.risk*13);
+}
+function hitTerrain(label,pen){
+  if(terrainHitCooldown>0||invuln>0)return;
+  terrainHitCooldown=.85;invuln=.65;damage++;gameMinutes-=pen;damageEl.textContent=String(damage);
+  banner.textContent=label+'！ -'+pen+'分';
+  flash.style.background='#ff8d4a';flash.style.opacity='.52';setTimeout(function(){flash.style.opacity='0';},140);
+  if(gameMinutes<=0)finish(false);
+}
+function updateReefTerrain(dt){
+  if(!currentEdge||currentEdge.hazard!=='岩礁')return;
+  var c=reefCenterAt(player.y),hw=reefHalfWidth();
+  var left=c-hw+player.r,right=c+hw-player.r;
+  if(player.x<left){
+    player.x=left;player.vx=Math.max(90,Math.abs(player.vx)*.42);
+    hitTerrain('岩壁に接触',8+currentEdge.risk*2);
+  }else if(player.x>right){
+    player.x=right;player.vx=-Math.max(90,Math.abs(player.vx)*.42);
+    hitTerrain('岩壁に接触',8+currentEdge.risk*2);
+  }
+}
+function updateCurrentForce(dt){
+  if(!currentEdge||currentEdge.hazard!=='海流')return;
+  var strength=125+currentEdge.risk*42;
+  var pulse=.78+.22*Math.sin(edgeProgress*.36);
+  player.vx+=flowDir*strength*pulse*dt;
+  if(player.x<34||player.x>566)hitTerrain('海流に押し流された',7+currentEdge.risk*2);
+}
+function drawReefTerrain(){
+  if(!currentEdge||currentEdge.hazard!=='岩礁')return;
+  var hw=reefHalfWidth(),left=[],right=[];
+  for(var y=-30;y<=H+30;y+=24){
+    var c=reefCenterAt(y);
+    left.push({x:c-hw,y:y});right.push({x:c+hw,y:y});
+  }
+  ctx.fillStyle='#394c50';ctx.beginPath();ctx.moveTo(0,-30);
+  left.forEach(function(p){ctx.lineTo(p.x,p.y);});ctx.lineTo(0,H+30);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.moveTo(W,-30);right.forEach(function(p){ctx.lineTo(p.x,p.y);});ctx.lineTo(W,H+30);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#788b83';ctx.lineWidth=8;ctx.beginPath();left.forEach(function(p,i){if(i===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);});ctx.stroke();
+  ctx.beginPath();right.forEach(function(p,i){if(i===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);});ctx.stroke();
+  ctx.fillStyle='rgba(188,207,180,.45)';
+  for(var i=0;i<left.length;i+=3){
+    ctx.beginPath();ctx.arc(left[i].x-7,left[i].y,7,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(right[i].x+7,right[i].y+9,6,0,Math.PI*2);ctx.fill();
+  }
+}
+function drawCurrent(){
+  if(!currentEdge||currentEdge.hazard!=='海流')return;
+  var dir=flowDir,shift=(performance.now()*.11)%90;
+  ctx.save();ctx.strokeStyle='rgba(139,225,255,.55)';ctx.fillStyle='rgba(139,225,255,.55)';ctx.lineWidth=5;
+  for(var y=170;y<850;y+=115){
+    for(var x=-90+shift;x<690;x+=120){
+      var xx=dir>0?x:W-x;
+      ctx.beginPath();ctx.moveTo(xx,y);ctx.lineTo(xx+dir*52,y);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(xx+dir*52,y);ctx.lineTo(xx+dir*36,y-10);ctx.lineTo(xx+dir*36,y+10);ctx.closePath();ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 function hit(h){
   if(invuln>0||h.state==='warning')return;
@@ -280,6 +353,9 @@ function update(dt){
   var sp=Math.hypot(player.vx,player.vy),max=500;if(sp>max){player.vx*=max/sp;player.vy*=max/sp;}
   player.x=clamp(player.x+player.vx*dt,30,570);player.y=clamp(player.y+player.vy*dt,240,835);
   if(invuln>0)invuln-=dt;
+  if(terrainHitCooldown>0)terrainHitCooldown-=dt;
+  updateCurrentForce(dt);
+  updateReefTerrain(dt);
   gameMinutes-=dt*D.minutesPerSecond;updateHud();
   if(gameMinutes<=0){finish(false);return;}
   if(fork){
@@ -337,7 +413,7 @@ function drawPlayer(){
   ctx.fillStyle='#8b2727';ctx.fillRect(-4,-12,8,30);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,-8,7,0,Math.PI*2);ctx.fill();ctx.restore();
 }
 function draw(){
-  drawSea();hazards.forEach(drawHazard);drawFork();drawPlayer();
+  drawSea();drawCurrent();drawReefTerrain();hazards.forEach(drawHazard);drawFork();drawPlayer();
   ctx.fillStyle='rgba(255,255,255,.76)';ctx.font='12px sans-serif';ctx.textAlign='left';
   if(currentEdge)ctx.fillText(currentEdge.from+'→'+currentEdge.to+' '+Math.floor(edgeProgress)+' / '+currentEdge.sail+'分　'+meta(currentEdge.hazard).short,12,H-15);
 }
