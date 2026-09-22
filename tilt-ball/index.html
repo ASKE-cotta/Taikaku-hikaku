@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#071827">
-<title>バギー帰還パニック v0.7</title>
+<title>バギー帰還パニック v0.8</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#06131f;color:#fff}*{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:#06131f;overscroll-behavior:none}body{padding:max(7px,env(safe-area-inset-top)) 7px max(9px,env(safe-area-inset-bottom))}
@@ -16,7 +16,7 @@ button{min-height:40px;border-radius:9px;border:1px solid #45637c;background:#17
 .modal.live-map{background:rgba(1,7,13,.38);padding:8px}.modal.live-map .card{width:min(94%,580px);background:rgba(12,30,45,.70);backdrop-filter:blur(1.5px);border-color:rgba(112,157,187,.7)}.modal.live-map .routeSvg{background:rgba(7,24,36,.64)}.modal.live-map .edgeRow{background:rgba(16,40,58,.72)}
 .card h1{font-size:19px;margin:0 0 5px}.card p{font-size:11px;line-height:1.55;color:#cbd8e2;margin:5px 0}.card .primary{width:100%;margin-top:8px}.mapTop{display:flex;justify-content:space-between;gap:8px;font-size:11px;margin:7px 0;align-items:center}
 .mapTop span{color:#f3c66c}.routeSvg{width:100%;height:auto;background:#071824;border:1px solid #29455b;border-radius:12px}.mapEdge{stroke:#5d7181;stroke-width:5;opacity:.7}.mapEdge.visited{stroke:#46b981}.mapEdge.current{stroke:#f1c75b;stroke-width:8}.edgeLabel{fill:#d4dee5;font-size:10px;paint-order:stroke;stroke:#071824;stroke-width:3px;stroke-linejoin:round}.mapNode circle{fill:#17384e;stroke:#6d879a;stroke-width:2}.mapNode.visited circle{fill:#225d4b}.mapNode.current circle{fill:#b8872e;stroke:#ffdb75;stroke-width:4}.mapNode.goal circle{fill:#812f40}.mapNode text{fill:#fff;font-size:12px;font-weight:800}.mapNode .nodeSub{font-size:9px;font-weight:500;fill:#d4dee5}.mapLegend{font-size:10px;color:#9db2c2;margin:6px 0}.edgeTable{display:grid;grid-template-columns:1fr 1fr;gap:3px}.edgeRow{display:grid;grid-template-columns:.8fr .7fr .8fr 1.5fr;gap:4px;background:#10283a;border-radius:6px;padding:4px 5px;font-size:9px;align-items:center}
-.mapActions{position:sticky;bottom:0;background:rgba(12,30,45,.88);padding-top:7px}.mapActions button{width:100%}.warning{font-size:11px;color:#ffca69;font-weight:800}.small{font-size:9px;color:#8fa9bd}.hazardLegend{font-size:9px;line-height:1.55;color:#c3d2dc;background:rgba(13,34,52,.7);border-radius:7px;padding:5px 7px;margin:5px 0}.hazardLegend b{color:#fff}.recordBox{margin:7px 0;padding:7px 9px;border:1px solid #31516b;border-radius:9px;background:rgba(7,24,36,.68);font-size:10px;line-height:1.55;color:#cbd8e2}.recordBox b{color:#fff}
+.shipMarker path{fill:#ffd764;stroke:#331f00;stroke-width:2}.liveRouteStrip{margin:6px 0;padding:6px 8px;border-radius:7px;background:rgba(241,199,91,.16);border:1px solid rgba(241,199,91,.42);font-size:10px;font-weight:800;color:#ffe8a6}.mapActions{position:sticky;bottom:0;background:rgba(12,30,45,.88);padding-top:7px}.mapActions button{width:100%}.warning{font-size:11px;color:#ffca69;font-weight:800}.small{font-size:9px;color:#8fa9bd}.hazardLegend{font-size:9px;line-height:1.55;color:#c3d2dc;background:rgba(13,34,52,.7);border-radius:7px;padding:5px 7px;margin:5px 0}.hazardLegend b{color:#fff}.recordBox{margin:7px 0;padding:7px 9px;border:1px solid #31516b;border-radius:9px;background:rgba(7,24,36,.68);font-size:10px;line-height:1.55;color:#cbd8e2}.recordBox b{color:#fff}
 @media(max-width:480px){.edgeTable{grid-template-columns:1fr}.hud{grid-template-columns:1.1fr 1fr 1.2fr .5fr}.v{font-size:11px}.card{padding:10px}.routeSvg{max-height:46vh}}
 </style>
 </head>
@@ -32,7 +32,7 @@ button{min-height:40px;border-radius:9px;border:1px solid #45637c;background:#17
 <canvas id="game" width="600" height="900"></canvas><div id="banner" class="banner">出航前に海図を覚えろ！</div><div id="flash" class="flash"></div>
 
 <div id="planning" class="modal"><div class="card">
-<h1>バギー帰還パニック <small>v0.7</small></h1>
+<h1>バギー帰還パニック <small>v0.8</small></h1>
 <p>クロコダイルとミホークにバレる前にカライ・バリ島へ帰れ。<b>ここだけは時間が止まっている。</b> ログ時間・航行時間・危険度を見て、先に作戦を立てよう。</p>
 <div id="recordSummary" class="recordBox"></div>
 <div id="planningMap"></div>
@@ -54,7 +54,7 @@ button{min-height:40px;border-radius:9px;border:1px solid #45637c;background:#17
 <div class="dpad"><button class="up" data-x="0" data-y="-1">▲</button><button class="left" data-x="-1" data-y="0">◀</button><button class="right" data-x="1" data-y="0">▶</button><button class="down" data-x="0" data-y="1">▼</button></div>
 </section>
 </main>
-<script src="route-data.js?v=7"></script>
-<script src="game.js?v=7"></script>
+<script src="route-data.js?v=8"></script>
+<script src="game.js?v=8"></script>
 </body>
 </html>
