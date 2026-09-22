@@ -2,7 +2,7 @@
 'use strict';
 var D=window.ROUTE_DATA,W=600,H=900;
 var canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
-var timeEl=document.getElementById('time'),placeEl=document.getElementById('place'),routeNowEl=document.getElementById('routeNow'),damageEl=document.getElementById('damage');
+var timeEl=document.getElementById('time'),placeEl=document.getElementById('place'),routeNowEl=document.getElementById('routeNow');
 var banner=document.getElementById('banner'),sensorEl=document.getElementById('sensor'),flash=document.getElementById('flash');
 var planning=document.getElementById('planning'),liveMap=document.getElementById('liveMap'),end=document.getElementById('end');
 var endTitle=document.getElementById('endTitle'),endText=document.getElementById('endText');
@@ -88,40 +88,56 @@ function updateHud(){
   timeEl.textContent=fmt(gameMinutes);
   placeEl.textContent=D.nodes[currentNode].name;
   routeNowEl.textContent=currentEdge?D.nodes[currentEdge.to].name+'へ / '+meta(currentEdge.hazard).short+' '+riskStars(currentEdge.risk):fork?'航路選択中':'待機';
-  damageEl.textContent=String(damage);
+  
   var lm=document.getElementById('liveTime');if(lm)lm.textContent=fmt(gameMinutes);
   updateLiveMapMarker();
 }
 function buildMap(targetId,live){
   var host=document.getElementById(targetId),svg=[];
-  svg.push('<svg viewBox="0 0 600 580" class="routeSvg" aria-label="航路海図">');
+  svg.push('<svg viewBox="0 0 600 580" class="routeSvg" aria-label="ドット航路海図">');
+  svg.push('<rect x="0" y="0" width="600" height="580" fill="transparent"/>');
+
   D.edges.forEach(function(e){
     var a=D.nodes[e.from],b=D.nodes[e.to],eid=key(e),cls='mapEdge';
     if(visitedEdges.indexOf(eid)>=0)cls+=' visited';
     if(currentEdge&&key(currentEdge)===eid)cls+=' current';
     svg.push('<line class="'+cls+'" x1="'+a.x+'" y1="'+a.y+'" x2="'+b.x+'" y2="'+b.y+'"/>');
-    var mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
-    svg.push('<text class="edgeLabel" x="'+mx+'" y="'+(my-4)+'" text-anchor="middle">'+e.sail+'m '+riskStars(e.risk)+'</text>');
+    var mx=Math.round((a.x+b.x)/2),my=Math.round((a.y+b.y)/2);
+    svg.push('<text class="edgeLabel" x="'+mx+'" y="'+(my-5)+'" text-anchor="middle">'+e.sail+'m '+riskStars(e.risk)+'</text>');
   });
+
   Object.keys(D.nodes).forEach(function(id){
     var n=D.nodes[id],cls='mapNode';
     if(visitedNodes.indexOf(id)>=0)cls+=' visited';
     if(currentNode===id)cls+=' current';
     if(id===D.goal)cls+=' goal';
-    svg.push('<g class="'+cls+'"><circle cx="'+n.x+'" cy="'+n.y+'" r="'+(id===D.goal?31:25)+'"/><text x="'+n.x+'" y="'+(n.y-2)+'" text-anchor="middle">'+(id===D.goal?'GOAL':id)+'</text>');
-    if(id!==D.start&&id!==D.goal)svg.push('<text class="nodeSub" x="'+n.x+'" y="'+(n.y+13)+'" text-anchor="middle">LOG '+n.log+'m</text>');
+    var x=n.x,y=n.y;
+    svg.push('<g class="'+cls+'">');
+    svg.push('<rect class="islandSand" x="'+(x-25)+'" y="'+(y+8)+'" width="50" height="10"/>');
+    svg.push('<rect class="islandSand" x="'+(x-19)+'" y="'+(y+18)+'" width="38" height="7"/>');
+    svg.push('<rect class="islandGreen" x="'+(x-18)+'" y="'+(y+1)+'" width="36" height="11"/>');
+    svg.push('<rect class="nodeBadge" x="'+(x-13)+'" y="'+(y-16)+'" width="26" height="20"/>');
+    svg.push('<text x="'+x+'" y="'+(y-2)+'" text-anchor="middle">'+(id===D.goal?'K':id)+'</text>');
+    if(id!==D.start&&id!==D.goal)svg.push('<text class="nodeSub" x="'+x+'" y="'+(y+39)+'" text-anchor="middle">LOG '+n.log+'m</text>');
+    if(id===D.goal)svg.push('<text class="nodeSub" x="'+x+'" y="'+(y+39)+'" text-anchor="middle">KARAI BARI</text>');
     svg.push('</g>');
   });
+
   if(live){
-    svg.push('<g id="mapShip" class="shipMarker" style="display:none"><path d="M0 -11 L8 9 L0 5 L-8 9 Z"/></g>');
+    svg.push('<g id="mapShip" class="shipMarker" style="display:none"><path d="M0 -13 L9 8 L3 8 L3 14 L-3 14 L-3 8 L-9 8 Z"/></g>');
   }
   svg.push('</svg>');
-  var rows=D.edges.map(function(e){return '<div class="edgeRow"><b>'+e.from+'→'+e.to+'</b><span>'+e.sail+'分</span><span>主:'+meta(e.hazard).short+'</span><span>'+riskStars(e.risk)+'</span></div>';}).join('');
-  var legend='<div class="hazardLegend"><b>主危険</b>　海軍＝予告砲撃　／　岩礁＝蛇行水道　／　海流＝逆舵維持　／　海賊＝追尾船　／　海王類＝横断突進<br><b>★が多いほど別種の危険も同時発生</b></div>';
+
+  var rows=D.edges.map(function(e){
+    return '<div class="edgeRow"><b>'+e.from+'→'+e.to+'</b><span>'+e.sail+'m</span><span>'+meta(e.hazard).short+'</span><span>'+riskStars(e.risk)+'</span></div>';
+  }).join('');
+  var legend='<div class="hazardLegend"><b>MAIN HAZARD</b>　砲撃 / 岩礁水道 / 強海流 / 追尾船 / 海王類<br><b>★が多いほど別種危険も同時発生</b>　※安全そうでも時間は自分で足せ。</div>';
   var detail=live
     ? '<div id="liveRouteInfo" class="liveRouteStrip"></div>'+legend
-    : '<div class="mapLegend">島の数字＝ログ記録時間 / 線の数字＝航行時間 / ★＝危険度</div>'+legend+'<div class="edgeTable">'+rows+'</div>';
-  host.innerHTML='<div class="mapTop">'+(live?'<b>航海中：一瞬で確認しろ</b><span>残り <strong id="liveTime">'+fmt(gameMinutes)+'</strong></span>':'<b>出航前：ここでは時間停止</b><span>じっくり作戦を立ててOK</span>')+'</div>'+svg.join('')+detail;
+    : '<div class="mapLegend">島＝LOG待ち / 線＝航行時間 / ★＝危険レイヤー数</div>'+legend+'<div class="edgeTable">'+rows+'</div>';
+  host.innerHTML='<div class="mapTop">'+(live
+    ? '<b>LIVE CHART / 一瞬で確認しろ</b><span>残り <strong id="liveTime">'+fmt(gameMinutes)+'</strong></span>'
+    : '<b>PRE-SAIL CHART / 作戦会議</b><span>時間停止中</span>')+'</div>'+svg.join('')+detail;
   if(live)updateLiveMapMarker();
 }
 function resetGame(){
@@ -307,7 +323,7 @@ function reefHalfWidth(){
 }
 function hitTerrain(label,pen){
   if(terrainHitCooldown>0||invuln>0)return;
-  terrainHitCooldown=.85;invuln=.65;damage++;gameMinutes-=pen;damageEl.textContent=String(damage);
+  terrainHitCooldown=.85;invuln=.65;damage++;gameMinutes-=pen;
   banner.textContent=label+'！ -'+pen+'分';
   flash.style.background='#ff8d4a';flash.style.opacity='.52';setTimeout(function(){flash.style.opacity='0';},140);
   if(gameMinutes<=0)finish(false);
@@ -364,7 +380,7 @@ function drawCurrent(){
 }
 function hit(h){
   if(invuln>0||h.state==='warning')return;
-  invuln=1.05;damage++;gameMinutes-=h.pen;damageEl.textContent=String(damage);
+  invuln=1.05;damage++;gameMinutes-=h.pen;
   var name=h.type==='rock'?'岩礁':h.type==='cannon'?'海軍砲撃':h.type==='pirate'?'海賊船':'海王類';
   banner.textContent=name+'！ -'+h.pen+'分';
   flash.style.background='#ff334e';flash.style.opacity='.65';setTimeout(function(){flash.style.opacity='0';},140);
@@ -407,6 +423,8 @@ function hazardAlive(h){
 }
 function finish(ok){
   running=false;liveMap.classList.add('hidden');end.classList.remove('hidden');
+  end.classList.toggle('success',!!ok);end.classList.toggle('failure',!ok);
+
   var records=loadRecords(),sig=routeSignature(),wasNew=false;records.attempts++;
   if(ok){
     records.successes++;
@@ -415,16 +433,26 @@ function finish(ok){
     if(records.minDamage===null||damage<records.minDamage)records.minDamage=damage;
   }
   saveRecords(records);
-  endTitle.textContent=ok?'帰還成功！':'……バギー。';
-  endText.innerHTML=ok?'残り <b>'+fmt(gameMinutes)+'</b> でカライ・バリ島へ帰還。<br>被害 '+damage+'回 / 経由 '+visitedNodes.join(' → '):'時間切れ。<br>経由 '+visitedNodes.join(' → ')+'<br>嫌な予感しかしない。';
+
+  var eyebrow=document.getElementById('resultEyebrow');
+  if(ok){
+    eyebrow.textContent='MISSION COMPLETE?';
+    endTitle.textContent='帰還成功！';
+    endText.innerHTML='<b>まだ……たぶんバレてねェ！！</b><br>残り '+fmt(gameMinutes)+' / 接触 '+damage+'回<span class="routeResult">経由 '+visitedNodes.join(' → ')+'</span>';
+  }else{
+    eyebrow.textContent='CROSS GUILD / INCOMING';
+    endTitle.textContent='……バギー。';
+    endText.innerHTML='<span class="apology">ごめんなさい。<br>すいませんでした。<br>二度としません。<br>許してください。</span><span class="routeResult">時間切れ / 経由 '+visitedNodes.join(' → ')+'</span>';
+  }
+
   var unique=Object.keys(records.routes).length,rt=document.getElementById('recordText');
-  if(rt)rt.innerHTML='<b>'+((ok&&wasNew)?'新航路走破！':'航海記録')+'</b>　帰還成功ルート '+unique+'種'+(records.bestRemaining!==null?'　｜　BEST残り '+fmt(records.bestRemaining):'')+(records.minDamage!==null?'　｜　最少被害 '+records.minDamage:'');
+  if(rt)rt.innerHTML='<b>'+((ok&&wasNew)?'NEW ROUTE!':'航海記録')+'</b>　帰還成功ルート '+unique+'種'+(records.bestRemaining!==null?'　｜ BEST '+fmt(records.bestRemaining):'')+(records.minDamage!==null?'　｜ 最少接触 '+records.minDamage:'');
   updateRecordSummary();
 }
 function update(dt){
   if(!running)return;
   var ix=clamp(input.x+manual.x,-1,1),iy=clamp(input.y+manual.y,-1,1);
-  player.vx+=ix*900*dt;player.vy+=iy*760*dt;
+  player.vx+=ix*900*dt;player.vy+=iy*675*dt;
   var drag=Math.pow(.055,dt);player.vx*=drag;player.vy*=drag;
   var sp=Math.hypot(player.vx,player.vy),max=500;if(sp>max){player.vx*=max/sp;player.vy*=max/sp;}
   player.x=clamp(player.x+player.vx*dt,30,570);player.y=clamp(player.y+player.vy*dt,240,835);
@@ -449,11 +477,28 @@ function update(dt){
   }
 }
 function drawSea(){
-  ctx.fillStyle='#0a5d78';ctx.fillRect(0,0,W,H);ctx.strokeStyle='rgba(255,255,255,.13)';ctx.lineWidth=2;
-  var off=(performance.now()*.05)%70;
-  for(var y=-70+off;y<H;y+=70){ctx.beginPath();for(var x=0;x<=W;x+=30)ctx.lineTo(x,y+Math.sin((x+y)*.035)*5);ctx.stroke();}
+  ctx.imageSmoothingEnabled=false;
+  ctx.fillStyle='#2786C1';ctx.fillRect(0,0,W,H);
+  var off=Math.floor((performance.now()*.055)%48);
+  ctx.fillStyle='#55B8D0';
+  for(var y=-48+off;y<H;y+=48){
+    for(var x=0;x<W;x+=72){
+      ctx.fillRect(x,y+((x/72)%2)*8,30,4);
+      ctx.fillRect(x+10,y+8+((x/72)%2)*8,28,4);
+    }
+  }
+  ctx.fillStyle='rgba(245,244,237,.72)';
+  for(var yy=-70+off*2;yy<H;yy+=96){
+    for(var xx=20;xx<W;xx+=120)ctx.fillRect(xx,yy,18,3);
+  }
 }
-function drawRock(h){ctx.fillStyle='#66747d';ctx.beginPath();ctx.arc(h.x,h.y,h.r,0,Math.PI*2);ctx.fill();ctx.fillStyle='#89949b';ctx.beginPath();ctx.arc(h.x-h.r*.2,h.y-h.r*.23,h.r*.26,0,Math.PI*2);ctx.fill();}
+function drawRock(h){
+  var x=Math.round(h.x),y=Math.round(h.y),r=Math.max(12,Math.round(h.r));
+  ctx.fillStyle='#172B3C';ctx.fillRect(x-r,y-r+6,r*2,r*2-8);
+  ctx.fillStyle='#55545A';ctx.fillRect(x-r+4,y-r+2,r*2-8,r*2-8);
+  ctx.fillStyle='#8b97a2';ctx.fillRect(x-r+8,y-r+7,Math.max(7,r-4),7);
+  ctx.fillStyle='#394c50';ctx.fillRect(x+2,y+3,Math.max(7,r-5),Math.max(7,r-8));
+}
 function drawCannon(h){
   if(h.state==='warning'){
     var pulse=.65+.25*Math.sin(performance.now()*.015);ctx.strokeStyle='rgba(255,190,70,'+pulse+')';ctx.lineWidth=4;ctx.setLineDash([10,7]);
@@ -461,8 +506,15 @@ function drawCannon(h){
   }else{ctx.fillStyle='#111';ctx.beginPath();ctx.arc(h.x,h.y,h.r,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ffb347';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(h.x-h.vx*.025,h.y-h.vy*.025);ctx.lineTo(h.x-h.vx*.055,h.y-h.vy*.055);ctx.stroke();}
 }
 function drawPirate(h){
-  ctx.save();ctx.translate(h.x,h.y);ctx.fillStyle='#8e3b46';ctx.beginPath();ctx.moveTo(-30,-13);ctx.lineTo(28,-13);ctx.lineTo(19,19);ctx.lineTo(-22,19);ctx.closePath();ctx.fill();
-  ctx.fillStyle='#eee';ctx.fillRect(-2,-39,4,27);ctx.beginPath();ctx.moveTo(2,-37);ctx.lineTo(24,-26);ctx.lineTo(2,-18);ctx.closePath();ctx.fill();ctx.restore();
+  var x=Math.round(h.x),y=Math.round(h.y);
+  ctx.save();ctx.translate(x,y);
+  ctx.fillStyle='#172B3C';ctx.fillRect(-24,-14,48,28);
+  ctx.fillStyle='#8C2028';ctx.fillRect(-20,-10,40,20);
+  ctx.fillStyle='#D7B576';ctx.fillRect(-14,10,28,8);
+  ctx.fillStyle='#172B3C';ctx.fillRect(-3,-42,6,33);
+  ctx.fillStyle='#F5F4ED';ctx.fillRect(3,-39,23,19);
+  ctx.fillStyle='#172B3C';ctx.fillRect(9,-34,10,3);ctx.fillRect(13,-38,3,11);
+  ctx.restore();
 }
 function drawKing(h){
   if(h.state==='warning'){
@@ -485,23 +537,32 @@ function drawFork(){
   });
 }
 function drawPlayer(){
-  ctx.save();ctx.translate(player.x,player.y);ctx.rotate(player.vx*.0005);if(invuln>0&&Math.floor(invuln*12)%2===0)ctx.globalAlpha=.25;
-  ctx.fillStyle='#f4c24d';ctx.beginPath();ctx.moveTo(0,-29);ctx.lineTo(24,23);ctx.lineTo(0,15);ctx.lineTo(-24,23);ctx.closePath();ctx.fill();
-  ctx.fillStyle='#8b2727';ctx.fillRect(-4,-12,8,30);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,-8,7,0,Math.PI*2);ctx.fill();ctx.restore();
+  var x=Math.round(player.x),y=Math.round(player.y),lean=clamp(player.vx/500,-1,1);
+  ctx.save();ctx.translate(x,y);ctx.rotate(lean*.08);
+  if(invuln>0&&Math.floor(invuln*12)%2===0)ctx.globalAlpha=.25;
+  // top-down pixel ship: always points upward.
+  ctx.fillStyle='#172B3C';ctx.fillRect(-18,-32,36,53);
+  ctx.fillStyle='#D7B576';ctx.fillRect(-13,-27,26,42);
+  ctx.fillStyle='#8C2028';ctx.fillRect(-10,10,20,10);
+  ctx.fillStyle='#172B3C';ctx.fillRect(-3,-35,6,40);
+  // loud Buggy-style red/white sail.
+  ctx.fillStyle='#F5F4ED';ctx.fillRect(3,-30,19,28);
+  ctx.fillStyle='#E43D45';ctx.fillRect(3,-30,7,28);ctx.fillRect(17,-30,5,28);
+  ctx.fillStyle='#2786C1';ctx.fillRect(-8,-10,7,7);
+  ctx.fillStyle='#F4C84B';ctx.fillRect(-4,17,8,6);
+  ctx.restore();
 }
 function draw(){
   drawSea();drawCurrent();drawReefTerrain();hazards.forEach(drawHazard);drawFork();drawPlayer();
-  ctx.fillStyle='rgba(255,255,255,.76)';ctx.font='12px sans-serif';ctx.textAlign='left';
+  ctx.fillStyle='#FFF1D6';ctx.font='bold 12px monospace';ctx.textAlign='left';
   if(currentEdge){
     ctx.fillText(currentEdge.from+'→'+currentEdge.to+' '+Math.floor(edgeProgress)+' / '+currentEdge.sail+'分　'+meta(currentEdge.hazard).short,12,H-29);
-    if(lastEncounterLabels.length){
-      ctx.fillStyle='rgba(255,230,160,.92)';ctx.fillText('発生中: '+lastEncounterLabels.join('＋'),12,H-13);
-    }
+
   }
 }
 function loop(now){var dt=clamp((now-last)/1000,0,.033);last=now;update(dt);draw();requestAnimationFrame(loop);}
 document.getElementById('start').addEventListener('click',startGame);
-document.getElementById('retry').addEventListener('click',function(){planning.classList.remove('hidden');end.classList.add('hidden');resetGame();});
+document.getElementById('retry').addEventListener('click',function(){planning.classList.remove('hidden');end.classList.add('hidden');end.classList.remove('success','failure');resetGame();});
 document.getElementById('mapBtn').addEventListener('click',function(){buildMap('liveMapBody',true);liveMap.classList.remove('hidden');});
 document.getElementById('closeMap').addEventListener('click',function(){liveMap.classList.add('hidden');});
 var keys=new Set();function keyUpdate(){manual.x=(keys.has('ArrowRight')||keys.has('KeyD')?1:0)-(keys.has('ArrowLeft')||keys.has('KeyA')?1:0);manual.y=(keys.has('ArrowDown')||keys.has('KeyS')?1:0)-(keys.has('ArrowUp')||keys.has('KeyW')?1:0);}
