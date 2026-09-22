@@ -80,7 +80,7 @@ function updateLiveMapMarker(){
   }
   if(info){
     info.textContent=currentEdge
-      ? 'NOW '+currentEdge.from+'→'+currentEdge.to+' ｜ '+meta(currentEdge.hazard).short+' '+riskStars(currentEdge.risk)+' ｜ '+Math.max(0,Math.ceil(currentEdge.sail-edgeProgress))+'分'
+      ? 'NOW '+currentEdge.from+'→'+currentEdge.to+' ｜ 主:'+meta(currentEdge.hazard).short+' '+riskStars(currentEdge.risk)+' ｜ '+Math.max(0,Math.ceil(currentEdge.sail-edgeProgress))+'分'
       : (fork?'NOW '+currentNode+' ｜ 次の航路を選択中':'NOW '+D.nodes[currentNode].name);
   }
 }
@@ -116,8 +116,8 @@ function buildMap(targetId,live){
     svg.push('<g id="mapShip" class="shipMarker" style="display:none"><path d="M0 -11 L8 9 L0 5 L-8 9 Z"/></g>');
   }
   svg.push('</svg>');
-  var rows=D.edges.map(function(e){return '<div class="edgeRow"><b>'+e.from+'→'+e.to+'</b><span>'+e.sail+'分</span><span>'+meta(e.hazard).short+'</span><span>'+riskStars(e.risk)+'</span></div>';}).join('');
-  var legend='<div class="hazardLegend"><b>避け方</b>　海軍＝予告砲撃　／　岩礁＝蛇行水道　／　海流＝逆舵維持　／　海賊＝追尾船　／　海王類＝横断突進</div>';
+  var rows=D.edges.map(function(e){return '<div class="edgeRow"><b>'+e.from+'→'+e.to+'</b><span>'+e.sail+'分</span><span>主:'+meta(e.hazard).short+'</span><span>'+riskStars(e.risk)+'</span></div>';}).join('');
+  var legend='<div class="hazardLegend"><b>主危険</b>　海軍＝予告砲撃　／　岩礁＝蛇行水道　／　海流＝逆舵維持　／　海賊＝追尾船　／　海王類＝横断突進<br><b>★が多いほど別種の危険も同時発生</b></div>';
   var detail=live
     ? '<div id="liveRouteInfo" class="liveRouteStrip"></div>'+legend
     : '<div class="mapLegend">島の数字＝ログ記録時間 / 線の数字＝航行時間 / ★＝危険度</div>'+legend+'<div class="edgeTable">'+rows+'</div>';
@@ -154,7 +154,7 @@ function beginEdge(e){
     var seed=(e.from.charCodeAt(0)+e.to.charCodeAt(0)+e.risk)%2;
     flowDir=seed===0?-1:1;
   }
-  banner.textContent=e.to+'へ！ '+meta(e.hazard).short+' '+riskStars(e.risk)+' — '+meta(e.hazard).cue+(e.hazard==='海流'?(flowDir<0?'（←へ流される）':'（→へ流される）'):'');
+  banner.textContent=e.to+'へ！ 主:'+meta(e.hazard).short+' '+riskStars(e.risk)+' — '+meta(e.hazard).cue+(e.risk>=4?'＋全危険混在！':'')+(e.hazard==='海流'?(flowDir<0?'（←へ流される）':'（→へ流される）'):'');
   updateHud();buildMap('liveMapBody',true);
 }
 function arrive(){
@@ -221,27 +221,52 @@ function spawnPattern(type,e){
   else if(type==='pirate')spawnPirate(e);
   else if(type==='king')spawnKing(e);
 }
+function primaryPatternFor(e){
+  if(e.hazard==='海軍')return'cannon';
+  if(e.hazard==='海賊')return'pirate';
+  if(e.hazard==='海王類')return'king';
+  if(e.hazard==='岩礁')return'rock';
+  return null;
+}
+function randomSecondary(exclude){
+  var pool=['rock','cannon','pirate','king'].filter(function(x){return x!==exclude;});
+  return pool[Math.floor(Math.random()*pool.length)];
+}
 function spawnHazard(){
   if(!currentEdge)return;
-  if(currentEdge.hazard==='混在'){
-    var pool=['cannon','pirate','king'],first=pool[Math.floor(Math.random()*pool.length)];
-    spawnPattern(first,currentEdge);
-    if(Math.random()<.72){
-      var rest=pool.filter(function(x){return x!==first;});
-      spawnPattern(rest[Math.floor(Math.random()*rest.length)],currentEdge);
-    }
+  var e=currentEdge,risk=e.risk,primary=primaryPatternFor(e);
+
+  // ★1: 主危険だけ。岩礁/海流は地形自体が主危険なので追加弾幕なし。
+  if(risk<=1){
+    if(primary&&e.hazard!=='岩礁')spawnPattern(primary,e);
     return;
   }
-  var t=pickHazard(currentEdge);
-  if(!t)return;
-  spawnPattern(t,currentEdge);
+
+  // ★4: 主危険という概念を超えて全部盛り。岩礁＋砲撃＋海賊＋海王類。
+  if(risk>=4){
+    spawnPattern('rock',e);
+    spawnPattern('cannon',e);
+    spawnPattern('pirate',e);
+    spawnPattern('king',e);
+    return;
+  }
+
+  // ★2〜3: 主危険を軸に、副次危険が混ざる。
+  if(primary&&e.hazard!=='岩礁')spawnPattern(primary,e);
+  var first=randomSecondary(primary);
+  spawnPattern(first,e);
+  if(risk>=3&&Math.random()<.58){
+    var second=randomSecondary(first);
+    if(second===primary)second=randomSecondary(primary);
+    spawnPattern(second,e);
+  }
 }
 function nextSpawnDistance(e){
-  if(e.hazard==='岩礁'||e.hazard==='海流')return 99999;
-  if(e.hazard==='海軍')return 215-e.risk*16+Math.random()*72;
-  if(e.hazard==='海賊')return 245-e.risk*18+Math.random()*88;
-  if(e.hazard==='海王類')return 285-e.risk*22+Math.random()*105;
-  return 220-e.risk*16+Math.random()*78;
+  if((e.hazard==='岩礁'||e.hazard==='海流')&&e.risk<=1)return 99999;
+  if(e.risk>=4)return 205+Math.random()*72;
+  if(e.risk===3)return 245+Math.random()*92;
+  if(e.risk===2)return 310+Math.random()*105;
+  return 390+Math.random()*120;
 }
 
 function reefCenterAt(screenY){
