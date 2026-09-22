@@ -1,10 +1,17 @@
 window.ROUTE_DATA = {
-  version: "0.4",
+  version: "0.6",
   start: "S",
   goal: "K",
   initialMinutes: 240,
   minutesPerSecond: 1.0,
   scrollSpeed: 180,
+  hazardMeta: {
+    "岩礁": { short:"狭路", cue:"岩の隙間を縫って抜ける" },
+    "海軍": { short:"予告砲撃", cue:"照準を見て砲撃地点から逃げる" },
+    "海賊": { short:"追尾船", cue:"寄ってくる船を振り切る" },
+    "海王類": { short:"横断突進", cue:"側面警告を見て上下へ逃げる" },
+    "混在": { short:"混成海域", cue:"複数の回避パターンが混ざる" }
+  },
   nodes: {
     S: { name: "やらかし地点", log: 0, x: 300, y: 535 },
     A: { name: "A島", log: 12, x: 105, y: 420 },
