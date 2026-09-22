@@ -35,7 +35,7 @@ function routeSignature(){return visitedNodes.join('>');}
 function updateRecordSummary(){
   var el=document.getElementById('recordSummary');if(!el)return;
   var r=loadRecords(),unique=Object.keys(r.routes).length;
-  el.innerHTML='<b>航海記録</b>　成功 '+r.successes+' / 挑戦 '+r.attempts+'　｜　走破ルート '+unique+' / '+TOTAL_ROUTES+(r.bestRemaining!==null?'　｜　BEST残り '+fmt(r.bestRemaining):'');
+  el.innerHTML='<b>航海記録</b>　成功 '+r.successes+' / 挑戦 '+r.attempts+'　｜　帰還成功ルート '+unique+'種'+(r.bestRemaining!==null?'　｜　BEST残り '+fmt(r.bestRemaining):'');
 }
 function screenAngle(){var a=screen.orientation&&typeof screen.orientation.angle==='number'?screen.orientation.angle:(typeof window.orientation==='number'?window.orientation:0);return((a%360)+360)%360;}
 function rotate(x,y){var a=screenAngle();if(a===90)return{x:y,y:-x};if(a===270)return{x:-y,y:x};if(a===180)return{x:-x,y:-y};return{x:x,y:y};}
@@ -367,7 +367,7 @@ function finish(ok){
   endTitle.textContent=ok?'帰還成功！':'……バギー。';
   endText.innerHTML=ok?'残り <b>'+fmt(gameMinutes)+'</b> でカライ・バリ島へ帰還。<br>被害 '+damage+'回 / 経由 '+visitedNodes.join(' → '):'時間切れ。<br>経由 '+visitedNodes.join(' → ')+'<br>嫌な予感しかしない。';
   var unique=Object.keys(records.routes).length,rt=document.getElementById('recordText');
-  if(rt)rt.innerHTML='<b>'+((ok&&wasNew)?'新航路走破！':'航海記録')+'</b>　走破ルート '+unique+' / '+TOTAL_ROUTES+(records.bestRemaining!==null?'　｜　BEST残り '+fmt(records.bestRemaining):'')+(records.minDamage!==null?'　｜　最少被害 '+records.minDamage:'');
+  if(rt)rt.innerHTML='<b>'+((ok&&wasNew)?'新航路走破！':'航海記録')+'</b>　帰還成功ルート '+unique+'種'+(records.bestRemaining!==null?'　｜　BEST残り '+fmt(records.bestRemaining):'')+(records.minDamage!==null?'　｜　最少被害 '+records.minDamage:'');
   updateRecordSummary();
 }
 function update(dt){
