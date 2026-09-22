@@ -9,7 +9,7 @@ var endTitle=document.getElementById('endTitle'),endText=document.getElementById
 var player={x:300,y:730,vx:0,vy:0,r:20},input={x:0,y:0},manual={x:0,y:0};
 var baseB=null,baseG=null,baseMX=null,baseMY=null,lastOri=0,lastMotion=0,sensorListenersAdded=false;
 var running=false,last=performance.now(),gameMinutes=D.initialMinutes,damage=0,invuln=0;
-var currentNode=D.start,currentEdge=null,edgeProgress=0,nextHazard=0,hazards=[],flowDir=1,terrainHitCooldown=0;
+var currentNode=D.start,currentEdge=null,edgeProgress=0,nextHazard=0,hazards=[],pendingPatterns=[],lastEncounterLabels=[],flowDir=1,terrainHitCooldown=0;
 var fork=null,forkY=-180,forkDelay=0,visitedNodes=[D.start],visitedEdges=[];
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function fmt(m){m=Math.max(0,Math.ceil(m));var h=Math.floor(m/60),mm=m%60;return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0');}
@@ -127,7 +127,7 @@ function buildMap(targetId,live){
 function resetGame(){
   player.x=300;player.y=730;player.vx=player.vy=0;input.x=input.y=manual.x=manual.y=0;
   baseB=baseG=baseMX=baseMY=null;lastOri=lastMotion=0;
-  gameMinutes=D.initialMinutes;damage=0;invuln=0;currentNode=D.start;currentEdge=null;edgeProgress=0;nextHazard=0;hazards=[];flowDir=1;terrainHitCooldown=0;
+  gameMinutes=D.initialMinutes;damage=0;invuln=0;currentNode=D.start;currentEdge=null;edgeProgress=0;nextHazard=0;hazards=[];pendingPatterns=[];lastEncounterLabels=[];flowDir=1;terrainHitCooldown=0;
   fork=null;forkY=-180;forkDelay=.4;visitedNodes=[D.start];visitedEdges=[];banner.textContent='まずは最初の航路を選べ！';
   updateHud();updateRecordSummary();buildMap('planningMap',false);buildMap('liveMapBody',true);
 }
@@ -149,7 +149,7 @@ function resolveFork(){
   var e=fork.edges[best];fork=null;beginEdge(e);
 }
 function beginEdge(e){
-  currentEdge=e;edgeProgress=0;nextHazard=220;hazards=[];terrainHitCooldown=0;visitedEdges.push(key(e));
+  currentEdge=e;edgeProgress=0;nextHazard=220;hazards=[];pendingPatterns=[];lastEncounterLabels=[];terrainHitCooldown=0;visitedEdges.push(key(e));
   if(e.hazard==='海流'){
     var seed=(e.from.charCodeAt(0)+e.to.charCodeAt(0)+e.risk)%2;
     flowDir=seed===0?-1:1;
@@ -158,7 +158,7 @@ function beginEdge(e){
   updateHud();buildMap('liveMapBody',true);
 }
 function arrive(){
-  var n=D.nodes[currentEdge.to];currentNode=currentEdge.to;visitedNodes.push(currentNode);currentEdge=null;hazards=[];
+  var n=D.nodes[currentEdge.to];currentNode=currentEdge.to;visitedNodes.push(currentNode);currentEdge=null;hazards=[];pendingPatterns=[];lastEncounterLabels=[];
   if(currentNode===D.goal){finish(true);return;}
   gameMinutes-=n.log;
   banner.textContent=n.name+' 到着！ ログ記録 -'+n.log+'分';
@@ -228,49 +228,64 @@ function primaryPatternFor(e){
   if(e.hazard==='岩礁')return'rock';
   return null;
 }
-function randomSecondary(exclude){
-  var pool=['rock','cannon','pirate','king'].filter(function(x){return x!==exclude;});
-  return pool[Math.floor(Math.random()*pool.length)];
+function patternLabel(t){
+  if(t==='rock')return'岩礁';
+  if(t==='cannon')return'砲撃';
+  if(t==='pirate')return'海賊';
+  if(t==='king')return'海王類';
+  return t;
+}
+function shuffledPool(excludes){
+  excludes=excludes||[];
+  var pool=['rock','cannon','pirate','king'].filter(function(t){return excludes.indexOf(t)<0;});
+  for(var i=pool.length-1;i>0;i--){
+    var j=Math.floor(Math.random()*(i+1)),tmp=pool[i];pool[i]=pool[j];pool[j]=tmp;
+  }
+  return pool;
+}
+function encounterTypesFor(e){
+  var risk=e.risk,primary=primaryPatternFor(e),types=[];
+  if(e.hazard==='混在'){
+    return shuffledPool([]).slice(0,risk>=4?4:(risk>=3?3:2));
+  }
+  if(risk>=4)return['rock','cannon','pirate','king'];
+
+  var terrainPrimary=(e.hazard==='岩礁'||e.hazard==='海流');
+  if(!terrainPrimary&&primary)types.push(primary);
+
+  // 「危険レイヤー数」を★数と一致させる。
+  // 岩礁/海流は地形そのものを1レイヤーとして数える。
+  var visibleLayers=terrainPrimary?1:types.length;
+  var need=Math.max(0,risk-visibleLayers);
+  var extras=shuffledPool(types).slice(0,need);
+  return types.concat(extras);
+}
+function terrainLabelFor(e){
+  if(e.hazard==='岩礁')return'岩礁地形';
+  if(e.hazard==='海流')return'海流';
+  return null;
+}
+function queueEncounter(types,e){
+  pendingPatterns=[];
+  types.forEach(function(t,i){
+    pendingPatterns.push({type:t,edge:e,delay:i*.16});
+  });
+  var labels=[];
+  var terrain=terrainLabelFor(e);if(terrain)labels.push(terrain);
+  types.forEach(function(t){labels.push(patternLabel(t));});
+  lastEncounterLabels=labels;
+}
+function updatePendingPatterns(dt){
+  if(!pendingPatterns.length)return;
+  pendingPatterns.forEach(function(p){p.delay-=dt;});
+  var due=pendingPatterns.filter(function(p){return p.delay<=0;});
+  pendingPatterns=pendingPatterns.filter(function(p){return p.delay>0;});
+  due.forEach(function(p){spawnPattern(p.type,p.edge);});
 }
 function spawnHazard(){
   if(!currentEdge)return;
-  var e=currentEdge,risk=e.risk,primary=primaryPatternFor(e);
-
-  // 混成海域は★2でも最低2種。★3は3種、★4は全部盛り。
-  if(e.hazard==='混在'){
-    var pool=['rock','cannon','pirate','king'];
-    for(var i=pool.length-1;i>0;i--){
-      var j=Math.floor(Math.random()*(i+1)),tmp=pool[i];pool[i]=pool[j];pool[j]=tmp;
-    }
-    var mixCount=risk>=4?4:(risk>=3?3:2);
-    pool.slice(0,mixCount).forEach(function(t){spawnPattern(t,e);});
-    return;
-  }
-
-  // ★1: 主危険だけ。岩礁/海流は地形自体が主危険なので追加弾幕なし。
-  if(risk<=1){
-    if(primary&&e.hazard!=='岩礁')spawnPattern(primary,e);
-    return;
-  }
-
-  // ★4: 主危険という概念を超えて全部盛り。岩礁＋砲撃＋海賊＋海王類。
-  if(risk>=4){
-    spawnPattern('rock',e);
-    spawnPattern('cannon',e);
-    spawnPattern('pirate',e);
-    spawnPattern('king',e);
-    return;
-  }
-
-  // ★2〜3: 主危険を軸に、副次危険が混ざる。
-  if(primary&&e.hazard!=='岩礁')spawnPattern(primary,e);
-  var first=randomSecondary(primary);
-  spawnPattern(first,e);
-  if(risk>=3&&Math.random()<.58){
-    var second=randomSecondary(first);
-    if(second===primary)second=randomSecondary(primary);
-    spawnPattern(second,e);
-  }
+  var types=encounterTypesFor(currentEdge);
+  queueEncounter(types,currentEdge);
 }
 function nextSpawnDistance(e){
   if((e.hazard==='岩礁'||e.hazard==='海流')&&e.risk<=1)return 99999;
@@ -427,6 +442,7 @@ function update(dt){
     edgeProgress+=dt*D.minutesPerSecond;
     nextHazard-=dt*D.scrollSpeed;
     if(nextHazard<=0){spawnHazard();nextHazard=nextSpawnDistance(currentEdge);}
+    updatePendingPatterns(dt);
     hazards.forEach(function(h){updateHazard(h,dt);if(h.state!=='warning'&&Math.hypot(player.x-h.x,player.y-h.y)<player.r+h.r)hit(h);});
     hazards=hazards.filter(hazardAlive);
     if(edgeProgress>=currentEdge.sail)arrive();
@@ -476,7 +492,12 @@ function drawPlayer(){
 function draw(){
   drawSea();drawCurrent();drawReefTerrain();hazards.forEach(drawHazard);drawFork();drawPlayer();
   ctx.fillStyle='rgba(255,255,255,.76)';ctx.font='12px sans-serif';ctx.textAlign='left';
-  if(currentEdge)ctx.fillText(currentEdge.from+'→'+currentEdge.to+' '+Math.floor(edgeProgress)+' / '+currentEdge.sail+'分　'+meta(currentEdge.hazard).short,12,H-15);
+  if(currentEdge){
+    ctx.fillText(currentEdge.from+'→'+currentEdge.to+' '+Math.floor(edgeProgress)+' / '+currentEdge.sail+'分　'+meta(currentEdge.hazard).short,12,H-29);
+    if(lastEncounterLabels.length){
+      ctx.fillStyle='rgba(255,230,160,.92)';ctx.fillText('発生中: '+lastEncounterLabels.join('＋'),12,H-13);
+    }
+  }
 }
 function loop(now){var dt=clamp((now-last)/1000,0,.033);last=now;update(dt);draw();requestAnimationFrame(loop);}
 document.getElementById('start').addEventListener('click',startGame);
