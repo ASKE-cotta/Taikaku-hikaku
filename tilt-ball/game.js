@@ -7,7 +7,7 @@ var banner=document.getElementById('banner'),sensorEl=document.getElementById('s
 var planning=document.getElementById('planning'),liveMap=document.getElementById('liveMap'),end=document.getElementById('end');
 var endTitle=document.getElementById('endTitle'),endText=document.getElementById('endText');
 var player={x:300,y:730,vx:0,vy:0,r:20},input={x:0,y:0},manual={x:0,y:0};
-var baseB=null,baseG=null,baseMX=null,baseMY=null,lastOri=0,lastMotion=0;
+var baseB=null,baseG=null,baseMX=null,baseMY=null,lastOri=0,lastMotion=0,sensorListenersAdded=false;
 var running=false,last=performance.now(),gameMinutes=D.initialMinutes,damage=0,invuln=0;
 var currentNode=D.start,currentEdge=null,edgeProgress=0,nextHazard=0,hazards=[];
 var fork=null,forkY=-180,forkDelay=0,visitedNodes=[D.start],visitedEdges=[];
@@ -59,8 +59,11 @@ async function enableSensor(){
     if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
       var m=await DeviceMotionEvent.requestPermission();if(m!=='granted')throw new Error();
     }
-    window.addEventListener('deviceorientation',onOrientation,true);
-    window.addEventListener('devicemotion',onMotion,true);
+    if(!sensorListenersAdded){
+      window.addEventListener('deviceorientation',onOrientation,true);
+      window.addEventListener('devicemotion',onMotion,true);
+      sensorListenersAdded=true;
+    }
     sensorEl.textContent='端末を傾けてください';
   }catch(e){sensorEl.textContent='センサー不可：ボタン操作';}
 }
@@ -98,6 +101,7 @@ function buildMap(targetId,live){
 }
 function resetGame(){
   player.x=300;player.y=730;player.vx=player.vy=0;input.x=input.y=manual.x=manual.y=0;
+  baseB=baseG=baseMX=baseMY=null;lastOri=lastMotion=0;
   gameMinutes=D.initialMinutes;damage=0;invuln=0;currentNode=D.start;currentEdge=null;edgeProgress=0;nextHazard=0;hazards=[];
   fork=null;forkY=-180;forkDelay=.4;visitedNodes=[D.start];visitedEdges=[];banner.textContent='まずは最初の航路を選べ！';
   updateHud();updateRecordSummary();buildMap('planningMap',false);buildMap('liveMapBody',true);
