@@ -67,12 +67,30 @@ async function enableSensor(){
     sensorEl.textContent='端末を傾けてください';
   }catch(e){sensorEl.textContent='センサー不可：ボタン操作';}
 }
+function updateLiveMapMarker(){
+  var marker=document.getElementById('mapShip'),info=document.getElementById('liveRouteInfo');
+  if(marker){
+    if(currentEdge){
+      var a=D.nodes[currentEdge.from],b=D.nodes[currentEdge.to],t=clamp(edgeProgress/currentEdge.sail,0,1);
+      var x=a.x+(b.x-a.x)*t,y=a.y+(b.y-a.y)*t;
+      marker.setAttribute('transform','translate('+x+' '+y+')');marker.style.display='';
+    }else{
+      marker.style.display='none';
+    }
+  }
+  if(info){
+    info.textContent=currentEdge
+      ? 'NOW '+currentEdge.from+'→'+currentEdge.to+' ｜ '+meta(currentEdge.hazard).short+' '+riskStars(currentEdge.risk)+' ｜ '+Math.max(0,Math.ceil(currentEdge.sail-edgeProgress))+'分'
+      : (fork?'NOW '+currentNode+' ｜ 次の航路を選択中':'NOW '+D.nodes[currentNode].name);
+  }
+}
 function updateHud(){
   timeEl.textContent=fmt(gameMinutes);
   placeEl.textContent=D.nodes[currentNode].name;
   routeNowEl.textContent=currentEdge?D.nodes[currentEdge.to].name+'へ / '+meta(currentEdge.hazard).short+' '+riskStars(currentEdge.risk):fork?'航路選択中':'待機';
   damageEl.textContent=String(damage);
   var lm=document.getElementById('liveTime');if(lm)lm.textContent=fmt(gameMinutes);
+  updateLiveMapMarker();
 }
 function buildMap(targetId,live){
   var host=document.getElementById(targetId),svg=[];
@@ -94,10 +112,17 @@ function buildMap(targetId,live){
     if(id!==D.start&&id!==D.goal)svg.push('<text class="nodeSub" x="'+n.x+'" y="'+(n.y+13)+'" text-anchor="middle">LOG '+n.log+'m</text>');
     svg.push('</g>');
   });
+  if(live){
+    svg.push('<g id="mapShip" class="shipMarker" style="display:none"><path d="M0 -11 L8 9 L0 5 L-8 9 Z"/></g>');
+  }
   svg.push('</svg>');
   var rows=D.edges.map(function(e){return '<div class="edgeRow"><b>'+e.from+'→'+e.to+'</b><span>'+e.sail+'分</span><span>'+meta(e.hazard).short+'</span><span>'+riskStars(e.risk)+'</span></div>';}).join('');
   var legend='<div class="hazardLegend"><b>避け方</b>　海軍＝予告砲撃　／　岩礁＝狭路　／　海賊＝追尾船　／　海王類＝横断突進</div>';
-  host.innerHTML='<div class="mapTop">'+(live?'<b>航海中：海図を見ても止まりません</b><span>残り <strong id="liveTime">'+fmt(gameMinutes)+'</strong></span>':'<b>出航前：ここでは時間停止</b><span>じっくり作戦を立ててOK</span>')+'</div>'+svg.join('')+'<div class="mapLegend">島の数字＝ログ記録時間 / 線の数字＝航行時間 / ★＝危険度</div>'+legend+'<div class="edgeTable">'+rows+'</div>';
+  var detail=live
+    ? '<div id="liveRouteInfo" class="liveRouteStrip"></div>'+legend
+    : '<div class="mapLegend">島の数字＝ログ記録時間 / 線の数字＝航行時間 / ★＝危険度</div>'+legend+'<div class="edgeTable">'+rows+'</div>';
+  host.innerHTML='<div class="mapTop">'+(live?'<b>航海中：一瞬で確認しろ</b><span>残り <strong id="liveTime">'+fmt(gameMinutes)+'</strong></span>':'<b>出航前：ここでは時間停止</b><span>じっくり作戦を立ててOK</span>')+'</div>'+svg.join('')+detail;
+  if(live)updateLiveMapMarker();
 }
 function resetGame(){
   player.x=300;player.y=730;player.vx=player.vy=0;input.x=input.y=manual.x=manual.y=0;
