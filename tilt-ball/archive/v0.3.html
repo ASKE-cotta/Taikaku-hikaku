@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#071827">
+<title>バギー帰還パニック v0.3</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#06131f;color:#fff}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#06131f;overscroll-behavior:none}
+body{padding:max(8px,env(safe-area-inset-top)) 8px max(10px,env(safe-area-inset-bottom))}
+.wrap{width:min(100%,680px);margin:auto}.hud{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:6px;margin-bottom:7px}
+.panel{background:#0d2234;border:1px solid #24425b;border-radius:10px;padding:7px 9px;min-width:0}
+.k{font-size:10px;color:#8fa9bd}.v{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stage{position:relative;border:1px solid #31516b;border-radius:16px;overflow:hidden;background:#0b4d67}
+canvas{display:block;width:100%;aspect-ratio:2/3;touch-action:none}
+.banner{position:absolute;left:10px;right:10px;top:10px;padding:8px 10px;border-radius:10px;background:rgba(3,12,22,.78);backdrop-filter:blur(5px);font-size:12px;line-height:1.4;pointer-events:none}
+.route{position:absolute;left:10px;right:10px;bottom:10px;display:none;grid-template-columns:repeat(3,1fr);gap:5px;pointer-events:none}
+.route>div{background:rgba(3,12,22,.82);border:1px solid rgba(255,255,255,.18);border-radius:9px;padding:6px 4px;text-align:center;font-size:10px;line-height:1.3}
+.controls{display:flex;justify-content:space-between;gap:8px;margin-top:7px;align-items:center;flex-wrap:wrap}
+button{min-height:42px;border-radius:10px;border:1px solid #45637c;background:#17344a;color:#fff;padding:0 12px;font-weight:700}
+button.primary{background:#d94657;border-color:#ff6b78}.dpad{display:grid;grid-template-columns:repeat(3,42px);grid-template-rows:repeat(3,42px);gap:3px}
+.dpad button{padding:0;font-size:17px}.up{grid-column:2}.left{grid-column:1;grid-row:2}.right{grid-column:3;grid-row:2}.down{grid-column:2;grid-row:3}
+.meta{font-size:11px;color:#9db2c2;line-height:1.45;flex:1;min-width:180px}
+.modal{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(1,7,13,.80);z-index:5;padding:20px}
+.modal.hidden{display:none}.card{width:min(100%,460px);background:#0c1e2d;border:1px solid #31516b;border-radius:16px;padding:18px}
+.card h1{font-size:22px;margin:0 0 8px}.card p{font-size:13px;line-height:1.65;color:#cbd8e2}.card button{width:100%;margin-top:8px}.small{font-size:10px;color:#8fa9bd;margin-top:6px}
+.flash{position:absolute;inset:0;pointer-events:none;opacity:0;background:#fff;z-index:4}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section class="hud">
+    <div class="panel"><div class="k">クロコダイル帰還まで</div><div class="v" id="time">04:00</div></div>
+    <div class="panel"><div class="k">現在地</div><div class="v" id="leg">出航</div></div>
+    <div class="panel"><div class="k">被害</div><div class="v" id="damage">0</div></div>
+  </section>
+
+  <section class="stage">
+    <canvas id="game" width="600" height="900"></canvas>
+    <div id="banner" class="banner">傾き操作 / ボタン操作対応</div>
+    <div id="route" class="route"></div>
+    <div id="flash" class="flash"></div>
+    <div id="intro" class="modal">
+      <div class="card">
+        <h1>バギー帰還パニック <small>v0.3</small></h1>
+        <p>バギーがまた何かやらかした。<br>クロコダイルとミホークにバレる前に、船を飛ばしてカライ・バリ島へ帰れ！</p>
+        <p>海軍・海賊・海王類・岩礁をかわし、途中の島でログを取りながら帰還する。<b>ログの早い島ほど、その先の航路は危険。</b></p>
+        <button id="start" class="primary">Chromeで出航する</button>
+        <div class="small">Android Chrome推奨。Braveでは端末センサーが反応しないことがあります。</div>
+      </div>
+    </div>
+    <div id="end" class="modal hidden"><div class="card"><h1 id="endTitle">RESULT</h1><p id="endText"></p><button id="retry" class="primary">もう一度</button></div></div>
+  </section>
+
+  <section class="controls">
+    <div class="meta"><b id="sensor">センサー未開始</b><br>島の分岐では、入りたい島の航路へ船を寄せてください。島到着時にログ記録時間が一気に消費されます。</div>
+    <div class="dpad">
+      <button class="up" data-x="0" data-y="-1">▲</button>
+      <button class="left" data-x="-1" data-y="0">◀</button>
+      <button class="right" data-x="1" data-y="0">▶</button>
+      <button class="down" data-x="0" data-y="1">▼</button>
+    </div>
+  </section>
+</main>
+
+<script>
+(function(){
+'use strict';
+var canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+var timeEl=document.getElementById('time'),legEl=document.getElementById('leg'),damageEl=document.getElementById('damage');
+var banner=document.getElementById('banner'),routeEl=document.getElementById('route'),sensorEl=document.getElementById('sensor');
+var intro=document.getElementById('intro'),end=document.getElementById('end'),endTitle=document.getElementById('endTitle'),endText=document.getElementById('endText'),flash=document.getElementById('flash');
+var W=600,H=900,player={x:300,y:730,vx:0,vy:0,r:20},running=false,last=performance.now();
+var input={x:0,y:0},manual={x:0,y:0},baseB=null,baseG=null,baseMX=null,baseMY=null,lastOri=0,lastMotion=0;
+var gameMinutes=240,damage=0,progress=0,scrollSpeed=175,leg=0,invuln=0,nextHazard=0,routeActive=false,routeGateY=-180,selectedRisk=1,gateResolved=false;
+var particles=[],hazards=[];
+var routes=[
+  [{name:'島A',wait:65,risk:0,label:'ログ65分 / 安全'},{name:'島B',wait:35,risk:1,label:'ログ35分 / 普通'},{name:'島C',wait:15,risk:2,label:'ログ15分 / 危険'}],
+  [{name:'島D',wait:55,risk:0,label:'ログ55分 / 安全'},{name:'島E',wait:30,risk:1,label:'ログ30分 / 普通'},{name:'島F',wait:12,risk:2,label:'ログ12分 / 危険'}],
+  [{name:'島G',wait:45,risk:0,label:'ログ45分 / 安全'},{name:'島H',wait:25,risk:1,label:'ログ25分 / 普通'},{name:'島I',wait:10,risk:2,label:'ログ10分 / 危険'}]
+];
+var legLengths=[1450,1500,1500,1350];
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function fmt(m){m=Math.max(0,Math.ceil(m));var h=Math.floor(m/60),mm=m%60;return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0');}
+function screenAngle(){var a=screen.orientation&&typeof screen.orientation.angle==='number'?screen.orientation.angle:(typeof window.orientation==='number'?window.orientation:0);return((a%360)+360)%360;}
+function rotate(x,y){var a=screenAngle();if(a===90)return{x:y,y:-x};if(a===270)return{x:-y,y:x};if(a===180)return{x:-x,y:-y};return{x:x,y:y};}
+function onOrientation(e){
+  if(!Number.isFinite(e.beta)||!Number.isFinite(e.gamma))return;
+  if(baseB===null){baseB=e.beta;baseG=e.gamma;}
+  var p=rotate(e.gamma-baseG,e.beta-baseB);
+  input.x=clamp(p.x/24,-1,1);input.y=clamp(p.y/24,-1,1);lastOri=performance.now();sensorEl.textContent='傾き入力: ON';
+}
+function onMotion(e){
+  if(performance.now()-lastOri<700)return;
+  var a=e.accelerationIncludingGravity;if(!a||!Number.isFinite(a.x)||!Number.isFinite(a.y))return;
+  var p=rotate(a.x,a.y);if(baseMX===null){baseMX=p.x;baseMY=p.y;}
+  input.x=clamp((p.x-baseMX)/4.5,-1,1);input.y=clamp(-(p.y-baseMY)/4.5,-1,1);lastMotion=performance.now();sensorEl.textContent='モーション入力: ON';
+}
+async function enableSensor(){
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+      var r=await DeviceOrientationEvent.requestPermission();if(r!=='granted')throw new Error('センサー権限が必要です');
+    }
+    if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){
+      var m=await DeviceMotionEvent.requestPermission();if(m!=='granted')throw new Error('モーション権限が必要です');
+    }
+    window.addEventListener('deviceorientation',onOrientation,true);
+    window.addEventListener('devicemotion',onMotion,true);
+    sensorEl.textContent='端末を傾けてください';
+  }catch(e){sensorEl.textContent='センサー不可: ボタン操作で遊べます';}
+}
+function resetGame(){
+  player.x=300;player.y=730;player.vx=player.vy=0;gameMinutes=240;damage=0;progress=0;leg=0;invuln=0;nextHazard=250;selectedRisk=1;
+  hazards=[];particles=[];routeActive=false;gateResolved=false;routeEl.style.display='none';banner.textContent='カライ・バリ島へ急げ！';legEl.textContent='航路 1/4';damageEl.textContent='0';timeEl.textContent=fmt(gameMinutes);
+}
+function startGame(){resetGame();intro.classList.add('hidden');end.classList.add('hidden');running=true;last=performance.now();enableSensor();}
+function spawnHazard(){
+  var risk=selectedRisk;
+  var t=Math.random();
+  if(t<0.55){
+    hazards.push({type:'rock',x:55+Math.random()*490,y:-50,r:22+Math.random()*18,vy:0,pen:10+6*risk});
+  }else if(t<0.82){
+    hazards.push({type:'cannon',x:40+Math.random()*520,y:-30,r:10,vy:110+30*risk,pen:16+6*risk});
+  }else{
+    hazards.push({type:'king',x:Math.random()<.5?-70:670,y:120+Math.random()*300,r:32,vx:(Math.random()<.5?1:-1)*(100+25*risk),pen:28+8*risk});
+    var h=hazards[hazards.length-1];if(h.x<0)h.vx=Math.abs(h.vx);else h.vx=-Math.abs(h.vx);
+  }
+}
+function beginRouteGate(){
+  if(leg>=3)return;
+  routeActive=true;gateResolved=false;routeGateY=-180;hazards=[];
+  var rs=routes[leg];routeEl.innerHTML='';
+  rs.forEach(function(r){
+    var d=document.createElement('div');d.innerHTML='<b>'+r.name+'</b><br>'+r.label;routeEl.appendChild(d);
+  });
+  routeEl.style.display='grid';banner.textContent='次の島を選べ！　船を航路へ寄せろ';
+}
+function resolveRoute(){
+  if(gateResolved)return;gateResolved=true;
+  var idx=player.x<200?0:(player.x<400?1:2),r=routes[leg][idx];
+  gameMinutes-=r.wait;selectedRisk=r.risk;routeActive=false;routeEl.style.display='none';
+  banner.textContent=r.name+' 到着！ ログ記録 -'+r.wait+'分　→ 次航路 '+(r.risk===0?'安全':r.risk===1?'普通':'危険');
+  leg++;progress=0;legEl.textContent=leg<4?'航路 '+(leg+1)+'/4':'最終航路';
+  flash.style.background='#a7f3d0';flash.style.opacity='.7';setTimeout(function(){flash.style.opacity='0';},180);
+  if(gameMinutes<=0)finish(false);
+}
+function hit(h){
+  if(invuln>0)return;invuln=1.1;damage++;gameMinutes-=h.pen;damageEl.textContent=String(damage);
+  banner.textContent=(h.type==='rock'?'岩礁に激突！':h.type==='cannon'?'砲撃を食らった！':'海王類に絡まれた！')+' -'+h.pen+'分';
+  flash.style.background='#ff324f';flash.style.opacity='.65';setTimeout(function(){flash.style.opacity='0';},150);
+  var dx=player.x-h.x,dy=player.y-h.y,l=Math.hypot(dx,dy)||1;player.vx+=dx/l*260;player.vy+=dy/l*180;
+  if(gameMinutes<=0)finish(false);
+}
+function finish(ok){
+  running=false;end.classList.remove('hidden');
+  if(ok){endTitle.textContent='帰還成功！';endText.innerHTML='残り <b>'+fmt(gameMinutes)+'</b> でカライ・バリ島へ滑り込み。<br>被害 '+damage+' 回。……たぶん、まだバレてない。';}
+  else{endTitle.textContent='……バギー。';endText.innerHTML='時間切れ。<br>カライ・バリ島に帰る前に、嫌な予感しかしない。';}
+}
+function update(dt){
+  if(!running)return;
+  var ix=clamp(input.x+manual.x,-1,1),iy=clamp(input.y+manual.y,-1,1);
+  player.vx+=ix*720*dt;player.vy+=iy*620*dt;
+  var drag=Math.pow(.06,dt);player.vx*=drag;player.vy*=drag;
+  var sp=Math.hypot(player.vx,player.vy),mx=420;if(sp>mx){player.vx*=mx/sp;player.vy*=mx/sp;}
+  player.x=clamp(player.x+player.vx*dt,32,568);player.y=clamp(player.y+player.vy*dt,250,830);
+  if(invuln>0)invuln-=dt;
+  gameMinutes-=dt*0.9;
+  timeEl.textContent=fmt(gameMinutes);
+  if(gameMinutes<=0){finish(false);return;}
+  if(routeActive){
+    routeGateY+=scrollSpeed*dt;
+    if(routeGateY>player.y-45)resolveRoute();
+  }else{
+    progress+=scrollSpeed*dt;
+    nextHazard-=scrollSpeed*dt;
+    if(nextHazard<=0){
+      spawnHazard();
+      nextHazard=240-(selectedRisk*45)+Math.random()*170;
+    }
+    if(progress>=legLengths[leg]){
+      if(leg<3)beginRouteGate();else finish(true);
+    }
+  }
+  hazards.forEach(function(h){
+    h.y+=scrollSpeed*dt+(h.vy||0)*dt;h.x+=(h.vx||0)*dt;
+    if(Math.hypot(player.x-h.x,player.y-h.y)<player.r+h.r)hit(h);
+  });
+  hazards=hazards.filter(function(h){return h.y<H+90&&h.x>-120&&h.x<W+120;});
+}
+function drawSea(){
+  ctx.fillStyle='#0b5972';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=2;
+  var off=(performance.now()*.05)%70;
+  for(var y=-70+off;y<H;y+=70){ctx.beginPath();for(var x=0;x<=W;x+=30){var yy=y+Math.sin((x+y)*.035)*5;ctx.lineTo(x,yy);}ctx.stroke();}
+}
+function drawHazard(h){
+  if(h.type==='rock'){ctx.fillStyle='#64727d';ctx.beginPath();ctx.arc(h.x,h.y,h.r,0,Math.PI*2);ctx.fill();ctx.fillStyle='#8b98a2';ctx.beginPath();ctx.arc(h.x-h.r*.25,h.y-h.r*.25,h.r*.3,0,Math.PI*2);ctx.fill();}
+  else if(h.type==='cannon'){ctx.fillStyle='#111';ctx.beginPath();ctx.arc(h.x,h.y,h.r,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ffb347';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(h.x,h.y-16);ctx.lineTo(h.x,h.y-28);ctx.stroke();}
+  else{ctx.fillStyle='#7c3aed';ctx.beginPath();ctx.arc(h.x,h.y,h.r,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(h.x-10,h.y-7,4,0,Math.PI*2);ctx.arc(h.x+10,h.y-7,4,0,Math.PI*2);ctx.fill();}
+}
+function drawGate(){
+  if(!routeActive)return;
+  var xs=[100,300,500],rs=routes[leg];
+  for(var i=0;i<3;i++){
+    var y=routeGateY;
+    ctx.fillStyle=i===0?'#5f8f62':i===1?'#9c7b48':'#8f5d65';
+    ctx.beginPath();ctx.ellipse(xs[i],y,88,55,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#efe2b6';ctx.beginPath();ctx.ellipse(xs[i],y-5,58,32,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#10212e';ctx.textAlign='center';ctx.font='bold 18px sans-serif';ctx.fillText(rs[i].name,xs[i],y+2);
+    ctx.font='13px sans-serif';ctx.fillText('-'+rs[i].wait+'分',xs[i],y+21);
+  }
+  ctx.strokeStyle='rgba(255,255,255,.22)';ctx.setLineDash([8,8]);ctx.beginPath();ctx.moveTo(200,0);ctx.lineTo(200,H);ctx.moveTo(400,0);ctx.lineTo(400,H);ctx.stroke();ctx.setLineDash([]);
+}
+function drawPlayer(){
+  ctx.save();ctx.translate(player.x,player.y);ctx.rotate(player.vx*.00055);
+  if(invuln>0&&Math.floor(invuln*12)%2===0)ctx.globalAlpha=.3;
+  ctx.fillStyle='#f4c24d';ctx.beginPath();ctx.moveTo(0,-28);ctx.lineTo(23,22);ctx.lineTo(0,14);ctx.lineTo(-23,22);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#7d2b25';ctx.fillRect(-4,-11,8,29);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,-7,7,0,Math.PI*2);ctx.fill();ctx.restore();
+}
+function draw(){
+  drawSea();
+  hazards.forEach(drawHazard);
+  drawGate();
+  drawPlayer();
+  ctx.fillStyle='rgba(255,255,255,.75)';ctx.font='12px sans-serif';ctx.textAlign='left';
+  ctx.fillText('進行 '+Math.floor(progress)+' / '+legLengths[Math.min(leg,3)],12,H-14);
+}
+function loop(now){var dt=clamp((now-last)/1000,0,.033);last=now;update(dt);draw();requestAnimationFrame(loop);}
+document.getElementById('start').addEventListener('click',startGame);
+document.getElementById('retry').addEventListener('click',startGame);
+var keys=new Set();function keyUpdate(){manual.x=(keys.has('ArrowRight')||keys.has('KeyD')?1:0)-(keys.has('ArrowLeft')||keys.has('KeyA')?1:0);manual.y=(keys.has('ArrowDown')||keys.has('KeyS')?1:0)-(keys.has('ArrowUp')||keys.has('KeyW')?1:0);}
+window.addEventListener('keydown',function(e){keys.add(e.code);keyUpdate();});window.addEventListener('keyup',function(e){keys.delete(e.code);keyUpdate();});
+document.querySelectorAll('.dpad button').forEach(function(b){
+  var x=Number(b.dataset.x),y=Number(b.dataset.y);
+  function press(e){e.preventDefault();manual.x=x;manual.y=y;}function release(e){e.preventDefault();manual.x=0;manual.y=0;}
+  b.addEventListener('pointerdown',press);b.addEventListener('pointerup',release);b.addEventListener('pointercancel',release);b.addEventListener('pointerleave',release);
+});
+resetGame();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
