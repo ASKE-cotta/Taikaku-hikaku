@@ -286,6 +286,14 @@ function encounterTypesFor(e){
     return types;
   }
 
+  // ★4: three layers in the main wave, keeping the route's identity.
+  // A delayed fourth layer is added only on some waves by queueEncounter().
+  if(risk>=4){
+    if(!terrainPrimary&&primary)types.push(primary);
+    var hardExcludes=types.concat(terrainPrimary?['rock']:[]);
+    return types.concat(shuffledPool(hardExcludes).slice(0,2));
+  }
+
   // ★2–3: keep main identity, then add secondary patterns.
   if(!terrainPrimary&&primary)types.push(primary);
   var visibleLayers=terrainPrimary?1:types.length;
