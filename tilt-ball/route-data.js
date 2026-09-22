@@ -1,5 +1,5 @@
 window.ROUTE_DATA = {
-  version: "0.9",
+  version: "0.10",
   start: "S",
   goal: "K",
   initialMinutes: 240,
@@ -40,9 +40,9 @@ window.ROUTE_DATA = {
     { from:"E", to:"H", sail:28, risk:2, hazard:"海流" },
     { from:"E", to:"I", sail:23, risk:3, hazard:"海賊" },
     { from:"F", to:"H", sail:35, risk:1, hazard:"海流" },
-    { from:"F", to:"I", sail:26, risk:2, hazard:"海王類" },
+    { from:"F", to:"I", sail:51, risk:1, hazard:"海流" },
     { from:"G", to:"I", sail:22, risk:4, hazard:"海軍" },
     { from:"H", to:"K", sail:26, risk:2, hazard:"混在" },
-    { from:"I", to:"K", sail:30, risk:3, hazard:"混在" }
+    { from:"I", to:"K", sail:30, risk:2, hazard:"混在" }
   ]
 };
