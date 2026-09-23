@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#2786C1">
-<title>バギー帰還パニック v0.13.2</title>
+<title>バギー帰還パニック v0.14</title>
 <style>
 :root{
   color-scheme:light;
@@ -129,14 +129,15 @@ button.primary{background:var(--red);color:#fff;border-color:var(--ink);text-sha
 <div id="flash" class="flash"></div>
 
 <div id="planning" class="modal planning-modal"><div class="card">
-  <div class="hero-tag">BUGGY ESCAPE MISSION // PIXEL PROTOTYPE</div>
-  <h1>バギー帰還<br>パニック <small>v0.13.2</small></h1>
+  <div class="hero-tag">BUGGY ESCAPE MISSION // VERTICAL SLICE</div>
+  <h1>バギー帰還<br>パニック <small>v0.14</small></h1>
   <div class="hero-shout">やっちまった！<br><span>クロコダイルとミホークにバレる前に戻って隠蔽するぞ野郎ども！！</span><br>面舵いっぱーい！</div>
   <p>カライ・バリ島へ帰れ。<b>ここだけは時間が止まっている。</b><br>LOG時間・航行時間・★危険度を見て、今のうちに航路を叩き込め。</p>
   <div id="recordSummary" class="recordBox"></div>
   <div id="planningMap"></div>
   <button id="start" class="primary">▶ 覚えた！ 出航する</button>
   <div class="small">Android Chrome推奨 / 出航後に海図を開いても時間も船も敵も止まりません。</div>
+  <div class="small"><b>v0.14 VERTICAL SLICE:</b> S→Aを基準に本番寄りアセット構造へ移行中。</div>
 <div id="bootStatus" class="small" style="margin-top:5px"></div>
 </div></div>
 
@@ -166,8 +167,9 @@ button.primary{background:var(--red);color:#fff;border-color:var(--ink);text-sha
   </div>
 </section>
 </main>
-<script src="route-data-v0132.js"></script>
-<script src="game-v0132.js"></script>
+<script src="route-data-v014.js"></script>
+<script src="pixel-assets-v014.js"></script>
+<script src="game-v014.js"></script>
 <script>
 setTimeout(function(){
   var s=document.getElementById('bootStatus');
