@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#2786C1">
-<title>バギー帰還パニック v0.15</title>
+<title>バギー帰還パニック v0.16</title>
 <style>
 :root{
   color-scheme:light;
@@ -53,6 +53,7 @@ button.primary{background:var(--red);color:#fff;border-color:var(--ink);text-sha
 .card p{font-size:11px;line-height:1.65;color:var(--ink);margin:7px 0}
 .card .primary{width:100%;margin-top:8px}
 .hero-tag{display:inline-block;background:var(--blue);color:#fff;border:3px solid var(--ink);padding:4px 7px;font-size:9px;font-weight:1000;margin-bottom:8px}
+.hero-art{display:block;width:100%;height:auto;aspect-ratio:10/3;border:4px solid var(--ink);background:var(--blue);image-rendering:pixelated;margin:7px 0;box-shadow:4px 4px 0 rgba(23,43,60,.25)}
 .hero-shout{margin:8px 0;background:#fff;border:3px solid var(--ink);padding:8px 9px;font-weight:1000;color:var(--red);box-shadow:3px 3px 0 var(--yellow)}
 .hero-shout span{color:var(--deep)}
 .small{font-size:9px;color:var(--deep);margin-top:7px}
@@ -129,15 +130,16 @@ button.primary{background:var(--red);color:#fff;border-color:var(--ink);text-sha
 <div id="flash" class="flash"></div>
 
 <div id="planning" class="modal planning-modal"><div class="card">
-  <div class="hero-tag">BUGGY ESCAPE MISSION // VERTICAL SLICE / SPRITE PASS</div>
-  <h1>バギー帰還<br>パニック <small>v0.15</small></h1>
+  <div class="hero-tag">BUGGY ESCAPE MISSION // VERTICAL SLICE / POLISHED SLICE</div>
+  <h1>バギー帰還<br>パニック <small>v0.16</small></h1>
+  <canvas id="heroArt" class="hero-art" width="320" height="96" aria-label="ゲームイメージ"></canvas>
   <div class="hero-shout">やっちまった！<br><span>クロコダイルとミホークにバレる前に戻って隠蔽するぞ野郎ども！！</span><br>面舵いっぱーい！</div>
   <p>カライ・バリ島へ帰れ。<b>ここだけは時間が止まっている。</b><br>LOG時間・航行時間・★危険度を見て、今のうちに航路を叩き込め。</p>
   <div id="recordSummary" class="recordBox"></div>
   <div id="planningMap"></div>
   <button id="start" class="primary">▶ 覚えた！ 出航する</button>
   <div class="small">Android Chrome推奨 / 出航後に海図を開いても時間も船も敵も止まりません。</div>
-  <div class="small"><b>v0.15 VERTICAL SLICE:</b> S→Aへ実PNGスプライトを投入。本番素材差し替え構造を検証中。</div>
+  <div class="small"><b>v0.16 POLISHED SLICE:</b> S→Aをプロモで見せられる完成形見本へ寄せています。</div>
 <div id="bootStatus" class="small" style="margin-top:5px"></div>
 </div></div>
 
@@ -167,11 +169,11 @@ button.primary{background:var(--red);color:#fff;border-color:var(--ink);text-sha
   </div>
 </section>
 </main>
-<script src="route-data-v015.js"></script>
+<script src="route-data-v016.js"></script>
 <script src="pixel-assets-v014.js"></script>
 <script src="pixel-sprites-v015.js"></script>
-<script src="pixel-assets-v015.js"></script>
-<script src="game-v015.js"></script>
+<script src="pixel-assets-v016.js"></script>
+<script src="game-v016.js"></script>
 <script>
 setTimeout(function(){
   var s=document.getElementById('bootStatus');
