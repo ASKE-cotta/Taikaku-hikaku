@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#2786C1">
+<title>バギー帰還パニック v0.15</title>
+<style>
+:root{
+  color-scheme:light;
+  --red:#E43D45;--blue:#2786C1;--deep:#165477;--cyan:#55B8D0;
+  --cream:#FFF1D6;--pink:#F19AAF;--yellow:#F4C84B;--purple:#7359A6;
+  --orange:#E98438;--sand:#D7B576;--ink:#172B3C;--white:#F5F4ED;
+  --black:#101217;--wine:#4B1017;--blood:#8C2028;--gold:#C39A43;
+  --tarnish:#79612F;--bone:#E3DAC4;--dead:#55545A;
+  font-family:ui-monospace,"MS Gothic","Yu Gothic UI",monospace;
+  background:#8bd6e7;color:var(--ink)
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:
+  linear-gradient(#7ed6f0 0 16%,#4fb9dc 16% 20%,#2786C1 20% 100%);overscroll-behavior:none}
+body{padding:max(7px,env(safe-area-inset-top)) 7px max(9px,env(safe-area-inset-bottom))}
+.wrap{width:min(100%,680px);margin:auto}
+.pixel-box{border:4px solid var(--ink);box-shadow:4px 4px 0 rgba(23,43,60,.34);image-rendering:pixelated}
+.hud{display:grid;grid-template-columns:.85fr 1fr 1.55fr;gap:6px;margin-bottom:7px}
+.panel{position:relative;background:var(--cream);border:4px solid var(--ink);padding:7px 8px;min-width:0;box-shadow:3px 3px 0 rgba(23,43,60,.25)}
+.panel:before{content:"";position:absolute;left:3px;right:3px;top:3px;height:4px;background:var(--yellow)}
+.panel:nth-child(2):before{background:var(--cyan)}
+.panel:nth-child(3):before{background:var(--pink)}
+.k{font-size:9px;font-weight:900;color:var(--deep);letter-spacing:.05em;margin-top:4px}
+.v{font-size:14px;font-weight:1000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:1px 1px 0 #fff}
+#time{color:var(--red);font-size:18px}
+.stage{position:relative;border:5px solid var(--ink);overflow:hidden;background:var(--blue);box-shadow:5px 5px 0 rgba(23,43,60,.34)}
+canvas{display:block;width:100%;aspect-ratio:2/3;touch-action:none;image-rendering:pixelated}
+.banner{position:absolute;left:10px;right:10px;top:10px;padding:8px 10px;background:var(--cream);border:3px solid var(--ink);box-shadow:3px 3px 0 rgba(23,43,60,.25);font-size:11px;font-weight:900;line-height:1.4;pointer-events:none}
+.banner:before{content:"!";display:inline-grid;place-items:center;width:18px;height:18px;margin-right:6px;background:var(--yellow);border:2px solid var(--ink)}
+.flash{position:absolute;inset:0;pointer-events:none;opacity:0;background:#fff;z-index:4}
+.controls{display:flex;justify-content:space-between;gap:7px;margin-top:7px;align-items:center}
+button{min-height:42px;border:4px solid var(--ink);border-radius:0;background:var(--cream);color:var(--ink);padding:0 12px;font-family:inherit;font-weight:1000;box-shadow:3px 3px 0 rgba(23,43,60,.35)}
+button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 rgba(23,43,60,.35)}
+button.primary{background:var(--red);color:#fff;border-color:var(--ink);text-shadow:2px 2px 0 var(--deep)}
+#mapBtn{background:var(--yellow)}
+.meta{font-size:10px;color:var(--cream);line-height:1.45;flex:1;text-shadow:1px 1px 0 var(--deep)}
+.meta b{color:#fff}
+.dpad{display:grid;grid-template-columns:repeat(3,39px);grid-template-rows:repeat(3,39px);gap:3px}
+.dpad button{padding:0;background:var(--cyan);font-size:18px}.up{grid-column:2}.left{grid-column:1;grid-row:2}.right{grid-column:3;grid-row:2}.down{grid-column:2;grid-row:3}
+
+.modal{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;background:rgba(22,84,119,.86);z-index:8;padding:11px;overflow:auto}
+.modal.hidden{display:none}
+.card{position:relative;width:min(100%,600px);background:var(--cream);border:5px solid var(--ink);padding:13px;box-shadow:6px 6px 0 rgba(23,43,60,.38)}
+.card h1{font-size:24px;line-height:1.05;margin:0 0 7px;color:var(--red);text-shadow:3px 3px 0 var(--yellow),5px 5px 0 var(--deep);letter-spacing:-.04em}
+.card h1 small{font-size:9px;text-shadow:none;color:var(--deep)}
+.card p{font-size:11px;line-height:1.65;color:var(--ink);margin:7px 0}
+.card .primary{width:100%;margin-top:8px}
+.hero-tag{display:inline-block;background:var(--blue);color:#fff;border:3px solid var(--ink);padding:4px 7px;font-size:9px;font-weight:1000;margin-bottom:8px}
+.hero-shout{margin:8px 0;background:#fff;border:3px solid var(--ink);padding:8px 9px;font-weight:1000;color:var(--red);box-shadow:3px 3px 0 var(--yellow)}
+.hero-shout span{color:var(--deep)}
+.small{font-size:9px;color:var(--deep);margin-top:7px}
+
+.mapTop{display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:8px 0;align-items:center;background:var(--deep);color:#fff;border:3px solid var(--ink);padding:5px 7px}
+.mapTop span{color:var(--yellow)}
+.routeSvg{width:100%;height:auto;background-color:#2f92bd;background-image:
+ linear-gradient(rgba(255,255,255,.08) 2px,transparent 2px),
+ linear-gradient(90deg,rgba(255,255,255,.08) 2px,transparent 2px);
+ background-size:16px 16px;border:4px solid var(--ink);shape-rendering:crispEdges}
+.mapEdge{stroke:var(--cream);stroke-width:6;stroke-dasharray:10 8;opacity:.82}
+.mapEdge.visited{stroke:var(--yellow)}
+.mapEdge.current{stroke:var(--red);stroke-width:9;opacity:1}
+.edgeLabel{fill:var(--cream);font-size:10px;font-weight:900;paint-order:stroke;stroke:var(--deep);stroke-width:4px;stroke-linejoin:miter}
+.islandSand{fill:var(--sand);stroke:var(--ink);stroke-width:3}
+.islandGreen{fill:#4a9b63;stroke:var(--ink);stroke-width:2}
+.nodeBadge{fill:var(--cream);stroke:var(--ink);stroke-width:3}
+.mapNode.current .nodeBadge{fill:var(--yellow)}
+.mapNode.visited .nodeBadge{fill:#aee0d0}
+.mapNode.goal .nodeBadge{fill:var(--red)}
+.mapNode.goal text{fill:#fff}
+.mapNode text{fill:var(--ink);font-size:12px;font-weight:1000}
+.mapNode .nodeSub{font-size:9px;fill:var(--cream);paint-order:stroke;stroke:var(--deep);stroke-width:3px}
+.mapLegend{font-size:9px;color:var(--deep);margin:6px 0;font-weight:900}
+.edgeTable{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.edgeRow{display:grid;grid-template-columns:.7fr .65fr 1.2fr 1.2fr;gap:4px;background:#fff;border:3px solid var(--ink);padding:4px 5px;font-size:9px;align-items:center}
+.hazardLegend{font-size:9px;line-height:1.55;color:var(--ink);background:var(--white);border:3px solid var(--ink);padding:6px 7px;margin:6px 0}
+.hazardLegend b{color:var(--red)}
+.shipMarker path{fill:var(--red);stroke:var(--ink);stroke-width:3}
+.liveRouteStrip{margin:6px 0;padding:6px 8px;background:var(--yellow);border:3px solid var(--ink);font-size:10px;font-weight:1000;color:var(--ink)}
+.mapActions{position:sticky;bottom:0;background:var(--cream);padding-top:7px}
+
+.modal.live-map{background:rgba(22,84,119,.35);padding:8px}
+.modal.live-map .card{width:min(94%,580px);background:rgba(255,241,214,.83);backdrop-filter:none}
+.warning{font-size:10px;color:#fff;font-weight:1000;background:var(--red);border:3px solid var(--ink);padding:5px 7px}
+
+.recordBox{margin:7px 0;padding:7px 9px;border:3px solid var(--ink);background:#fff;font-size:9px;line-height:1.55;color:var(--deep)}
+.recordBox b{color:var(--red)}
+
+.result-modal.success{background:rgba(39,134,193,.9)}
+.result-modal.success .card{background:var(--cream)}
+.result-modal.failure{background:
+  repeating-linear-gradient(0deg,rgba(0,0,0,.06) 0 4px,transparent 4px 8px),
+  linear-gradient(180deg,#08090d,#2b090e 55%,#100407)}
+.result-modal.failure .card{background:var(--black);border-color:var(--gold);box-shadow:6px 6px 0 #000;color:var(--bone);animation:horrorFlicker 2.7s steps(1) infinite}
+.result-modal.failure .card:before,.result-modal.failure .card:after{content:"";position:absolute;top:44px;bottom:44px;width:36px;background:linear-gradient(var(--wine),#000);opacity:.75}
+.result-modal.failure .card:before{left:-6px}.result-modal.failure .card:after{right:-6px}
+.result-modal.failure h1{color:var(--bone);text-shadow:3px 3px 0 var(--blood);font-size:27px;text-align:center}
+.result-modal.failure p{color:var(--bone);text-align:center}
+.result-modal.failure .recordBox{background:#17171b;border-color:var(--tarnish);color:var(--dead)}
+.result-modal.failure .primary{background:var(--wine);border-color:var(--gold);color:var(--bone);text-shadow:none}
+.resultEyebrow{font-size:9px;font-weight:1000;letter-spacing:.16em;color:var(--deep);margin-bottom:8px}
+.result-modal.failure .resultEyebrow{color:var(--gold);text-align:center}
+.apology{display:block;font-size:13px;line-height:1.9;font-weight:1000}
+.routeResult{display:block;margin-top:10px;font-size:9px;opacity:.72}
+@keyframes horrorFlicker{0%,92%,100%{transform:none}93%{transform:translateX(1px)}94%{transform:translateX(-1px)}}
+
+@media(max-width:480px){
+  .edgeTable{grid-template-columns:1fr}.hud{grid-template-columns:.85fr .9fr 1.35fr}.v{font-size:11px}#time{font-size:16px}.card{padding:10px}.routeSvg{max-height:46vh}
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+<section class="hud">
+  <div class="panel"><div class="k">DEADLINE</div><div id="time" class="v">04:00</div></div>
+  <div class="panel"><div class="k">POSITION</div><div id="place" class="v">出航前</div></div>
+  <div class="panel"><div class="k">ROUTE / MAIN HAZARD</div><div id="routeNow" class="v">待機</div></div>
+</section>
+
+<section class="stage">
+<canvas id="game" width="600" height="900"></canvas>
+<div id="banner" class="banner">出航前に海図を覚えろ！</div>
+<div id="flash" class="flash"></div>
+
+<div id="planning" class="modal planning-modal"><div class="card">
+  <div class="hero-tag">BUGGY ESCAPE MISSION // VERTICAL SLICE / SPRITE PASS</div>
+  <h1>バギー帰還<br>パニック <small>v0.15</small></h1>
+  <div class="hero-shout">やっちまった！<br><span>クロコダイルとミホークにバレる前に戻って隠蔽するぞ野郎ども！！</span><br>面舵いっぱーい！</div>
+  <p>カライ・バリ島へ帰れ。<b>ここだけは時間が止まっている。</b><br>LOG時間・航行時間・★危険度を見て、今のうちに航路を叩き込め。</p>
+  <div id="recordSummary" class="recordBox"></div>
+  <div id="planningMap"></div>
+  <button id="start" class="primary">▶ 覚えた！ 出航する</button>
+  <div class="small">Android Chrome推奨 / 出航後に海図を開いても時間も船も敵も止まりません。</div>
+  <div class="small"><b>v0.15 VERTICAL SLICE:</b> S→Aへ実PNGスプライトを投入。本番素材差し替え構造を検証中。</div>
+<div id="bootStatus" class="small" style="margin-top:5px"></div>
+</div></div>
+
+<div id="liveMap" class="modal live-map hidden"><div class="card">
+  <div class="warning">！航海継続中：海図を開いても止まりません</div>
+  <div id="liveMapBody"></div>
+  <div class="mapActions"><button id="closeMap" class="primary">× 海図を閉じる</button></div>
+</div></div>
+
+<div id="end" class="modal result-modal hidden"><div class="card">
+  <div id="resultEyebrow" class="resultEyebrow">RESULT</div>
+  <h1 id="endTitle">RESULT</h1>
+  <p id="endText"></p>
+  <div id="recordText" class="recordBox"></div>
+  <button id="retry" class="primary">↻ 海図からやり直す</button>
+</div></div>
+</section>
+
+<section class="controls">
+  <div class="meta"><b id="sensor">センサー未開始</b><br>左右＝主操舵 / 上下＝補助移動。海は強制スクロール。</div>
+  <button id="mapBtn">▦ 海図</button>
+  <div class="dpad">
+    <button class="up" data-x="0" data-y="-1">▲</button>
+    <button class="left" data-x="-1" data-y="0">◀</button>
+    <button class="right" data-x="1" data-y="0">▶</button>
+    <button class="down" data-x="0" data-y="1">▼</button>
+  </div>
+</section>
+</main>
+<script src="route-data-v015.js"></script>
+<script src="pixel-assets-v014.js"></script>
+<script src="pixel-sprites-v015.js"></script>
+<script src="pixel-assets-v015.js"></script>
+<script src="game-v015.js"></script>
+<script>
+setTimeout(function(){
+  var s=document.getElementById('bootStatus');
+  if(!s)return;
+  if(window.__BUGGY_START_READY){
+    var mode=window.__BUGGY_ASSET_MODE?window.__BUGGY_ASSET_MODE():'?';
+    s.textContent='SYSTEM READY / ART '+mode;
+    s.style.color='#165477';
+  }else{
+    s.textContent='読み込みに失敗しました。ページを再読み込みしてください。';
+    s.style.color='#E43D45';
+  }
+},700);
+</script>
+</body>
+</html>
