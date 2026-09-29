@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#2786C1">
-<title>バギー帰還パニック v0.16</title>
+<title>バギー帰還パニック v0.17</title>
 <style>
 :root{
   color-scheme:light;
@@ -60,23 +60,10 @@ button.primary{background:var(--red);color:#fff;border-color:var(--ink);text-sha
 
 .mapTop{display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:8px 0;align-items:center;background:var(--deep);color:#fff;border:3px solid var(--ink);padding:5px 7px}
 .mapTop span{color:var(--yellow)}
-.routeSvg{width:100%;height:auto;background-color:#2f92bd;background-image:
- linear-gradient(rgba(255,255,255,.08) 2px,transparent 2px),
- linear-gradient(90deg,rgba(255,255,255,.08) 2px,transparent 2px);
- background-size:16px 16px;border:4px solid var(--ink);shape-rendering:crispEdges}
-.mapEdge{stroke:var(--cream);stroke-width:6;stroke-dasharray:10 8;opacity:.82}
-.mapEdge.visited{stroke:var(--yellow)}
-.mapEdge.current{stroke:var(--red);stroke-width:9;opacity:1}
-.edgeLabel{fill:var(--cream);font-size:10px;font-weight:900;paint-order:stroke;stroke:var(--deep);stroke-width:4px;stroke-linejoin:miter}
-.islandSand{fill:var(--sand);stroke:var(--ink);stroke-width:3}
-.islandGreen{fill:#4a9b63;stroke:var(--ink);stroke-width:2}
-.nodeBadge{fill:var(--cream);stroke:var(--ink);stroke-width:3}
-.mapNode.current .nodeBadge{fill:var(--yellow)}
-.mapNode.visited .nodeBadge{fill:#aee0d0}
-.mapNode.goal .nodeBadge{fill:var(--red)}
-.mapNode.goal text{fill:#fff}
-.mapNode text{fill:var(--ink);font-size:12px;font-weight:1000}
-.mapNode .nodeSub{font-size:9px;fill:var(--cream);paint-order:stroke;stroke:var(--deep);stroke-width:3px}
+.routeCanvas{display:block;width:100%;height:auto;background:#2786C1;border:4px solid var(--ink);image-rendering:pixelated;box-shadow:4px 4px 0 rgba(23,43,60,.25)}
+.featureRow{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:7px 0}
+.featureChip{background:#fff;border:3px solid var(--ink);padding:6px 5px;text-align:center;font-size:9px;font-weight:1000;box-shadow:2px 2px 0 rgba(23,43,60,.2)}
+.featureChip b{display:block;color:var(--red);font-size:11px;margin-bottom:2px}
 .mapLegend{font-size:9px;color:var(--deep);margin:6px 0;font-weight:900}
 .edgeTable{display:grid;grid-template-columns:1fr 1fr;gap:4px}
 .edgeRow{display:grid;grid-template-columns:.7fr .65fr 1.2fr 1.2fr;gap:4px;background:#fff;border:3px solid var(--ink);padding:4px 5px;font-size:9px;align-items:center}
@@ -130,16 +117,21 @@ button.primary{background:var(--red);color:#fff;border-color:var(--ink);text-sha
 <div id="flash" class="flash"></div>
 
 <div id="planning" class="modal planning-modal"><div class="card">
-  <div class="hero-tag">BUGGY ESCAPE MISSION // VERTICAL SLICE / POLISHED SLICE</div>
-  <h1>バギー帰還<br>パニック <small>v0.16</small></h1>
+  <div class="hero-tag">BUGGY ESCAPE MISSION // VERTICAL SLICE / CHART POLISH</div>
+  <h1>バギー帰還<br>パニック <small>v0.17</small></h1>
   <canvas id="heroArt" class="hero-art" width="320" height="96" aria-label="ゲームイメージ"></canvas>
+  <div class="featureRow">
+    <div class="featureChip"><b>TILT</b>傾けて操船</div>
+    <div class="featureChip"><b>ROUTE</b>海図で逆算</div>
+    <div class="featureChip"><b>TIME</b>時間＝命</div>
+  </div>
   <div class="hero-shout">やっちまった！<br><span>クロコダイルとミホークにバレる前に戻って隠蔽するぞ野郎ども！！</span><br>面舵いっぱーい！</div>
   <p>カライ・バリ島へ帰れ。<b>ここだけは時間が止まっている。</b><br>LOG時間・航行時間・★危険度を見て、今のうちに航路を叩き込め。</p>
   <div id="recordSummary" class="recordBox"></div>
   <div id="planningMap"></div>
   <button id="start" class="primary">▶ 覚えた！ 出航する</button>
   <div class="small">Android Chrome推奨 / 出航後に海図を開いても時間も船も敵も止まりません。</div>
-  <div class="small"><b>v0.16 POLISHED SLICE:</b> S→Aをプロモで見せられる完成形見本へ寄せています。</div>
+  <div class="small"><b>v0.17 CHART POLISH:</b> 海図も実スプライト世界へ統一中。</div>
 <div id="bootStatus" class="small" style="margin-top:5px"></div>
 </div></div>
 
@@ -169,11 +161,11 @@ button.primary{background:var(--red);color:#fff;border-color:var(--ink);text-sha
   </div>
 </section>
 </main>
-<script src="route-data-v016.js"></script>
+<script src="route-data-v017.js"></script>
 <script src="pixel-assets-v014.js"></script>
 <script src="pixel-sprites-v015.js"></script>
 <script src="pixel-assets-v016.js"></script>
-<script src="game-v016.js"></script>
+<script src="game-v017.js"></script>
 <script>
 setTimeout(function(){
   var s=document.getElementById('bootStatus');
